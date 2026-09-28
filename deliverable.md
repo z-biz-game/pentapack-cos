@@ -116,7 +116,7 @@ iron   k=8 窗口 4-7  实测 4,5,6,4,7,4
 {"build_type":"workflow"}`（GITHUB_TOKEN 无权创建 Pages 站点，第一次 push 之后再建就来不及）→
 push → 读 Actions 自己打印的行数（绿徽章不是证明）→ 对线上 URL 重跑浏览器门禁。
 
-（本节气泡于部署完成后按实测填写：仓 URL、CI run 与 Deploy run 的结论、Pages 部署产物清单、
+（本节在部署完成后按实测填写：仓 URL、CI run 与 Deploy run 的结论、Pages 部署产物清单、
 以及对 `https://z-biz-game.github.io/pentapack-cos/` 重跑 `@boot/@play/@routes/@save/@pointer` 的
 行数与失败数。）
 

@@ -178,7 +178,9 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
 三处设计是为了不让"绿"变成 opinion：
 
-1. **开跑前拒绝占用**：任一端口上已有服务应答就直接 `exit 6`。这不是洁癖 ——
+1. **开跑前拒绝占用**：任一端口上已有**监听**就直接 `exit 6` 并打印持有者 PID。判据是一次
+   `net.connect`（node 本来就是硬依赖），不是 `curl /json/version` —— 后者会放过一个对
+   `/json/version` 回 404 的监听者，而那个监听者一样会让 Chrome 绑不上。这条不是洁癖 ——
    一次探针留下过 9357 上的 Chrome 与 5197 上的服务，之后的运行报了 20/20 全过，
    而它驱动的是它自己没启动的那个浏览器。**端口撞车产出的是假判决，不是不便。**
 2. **脏 console 算红**：聚合器 grep `[error] [EXCEPTION] [warning] [log:*] uncaught typeerror referenceerror`。

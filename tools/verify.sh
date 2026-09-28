@@ -32,19 +32,32 @@ if [ -z "$CHROME" ]; then
 fi
 [ -x "$CHROME" ] || { echo "no Chrome found; set CHROME_BIN" >&2; exit 2; }
 
-# Refuse *before* the run, not after it. If something already answers on either port, the
-# waiting loops below would succeed against that other process: the driver would drive a browser
-# that did not start with this checkout, the leaked process would then be blamed on the run, and
-# the verdict would be a guess. (This actually happened: a throwaway probe left a Chrome on :9357
-# and a server on :5197, and the suite reported 20/20 rows for a page it never launched.)
-if curl -fsS -m 1 "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1; then
-  echo "port $CDP_PORT is already bound by a live devtools; refusing to drive someone else's Chrome" >&2
-  echo "  owner: $(lsof -nP -iTCP:$CDP_PORT -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -3)" >&2
+# Refuse *before* the run, not after it. If something already listens on either port, the waiting
+# loops below would succeed against that other process: the driver would drive a browser that did
+# not start with this checkout, the leaked process would then be blamed on the run, and the verdict
+# would be a guess. (This actually happened: a throwaway probe left a Chrome on :9357 and a server
+# on :5197, and the suite reported 20/20 rows for a page it never launched.)
+#
+# A TCP connect, not an HTTP probe: the question is "is this port taken", and a listener that
+# answers 404 to /json/version is still somebody else's listener. node is already a hard
+# requirement for this script, and `net.connect` works the same on macOS and on the CI runner
+# (lsof is not guaranteed there).
+busy() {
+  node -e 'const net = require("node:net"); const p = Number(process.argv[1]);
+    const s = net.connect(p, "127.0.0.1");
+    s.on("connect", () => { s.destroy(); process.exit(0); });
+    s.on("error", () => process.exit(1));
+    setTimeout(() => process.exit(1), 800);' "$1"
+}
+owner() { lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -3; }
+if busy "$CDP_PORT"; then
+  echo "port $CDP_PORT is already listening; refusing to drive someone else's Chrome" >&2
+  echo "  owner: $(owner "$CDP_PORT")" >&2
   exit 6
 fi
-if [ "$BASE" = "http://127.0.0.1:$WEB_PORT/" ] && curl -fsS -m 1 "$BASE" >/dev/null 2>&1; then
-  echo "port $WEB_PORT is already serving; refusing to test through someone else's server" >&2
-  echo "  owner: $(lsof -nP -iTCP:$WEB_PORT -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -3)" >&2
+if [ "$BASE" = "http://127.0.0.1:$WEB_PORT/" ] && busy "$WEB_PORT"; then
+  echo "port $WEB_PORT is already listening; refusing to test through someone else's server" >&2
+  echo "  owner: $(owner "$WEB_PORT")" >&2
   exit 6
 fi
 
