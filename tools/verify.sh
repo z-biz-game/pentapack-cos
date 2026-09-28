@@ -63,7 +63,13 @@ fi
 
 # A throwaway profile: --user-data-dir is the only way to be sure a warm profile from someone
 # else's Chrome session cannot make this run hang on a "restore pages?" bubble.
-UDD=$(mktemp -d -t $TAG)
+# The template must carry the X's inline: GNU `mktemp -d -t pentapack` aborts with "too few X's"
+# (that is exactly how the CI browser job died on 2026-09-28 — macOS accepts it, Linux does not,
+# so the run failed before Chrome was even launched and reported "devtools never bound").
+UDD=$(mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX")
+# Fail here rather than three minutes from now: an empty $UDD would leave `--user-data-dir=`
+# pointing at nothing, and the run would end as "devtools never bound" with no hint of why.
+[ -d "$UDD" ] || { echo "could not create a throwaway profile dir: '$UDD'" >&2; exit 7; }
 "$CHROME" --headless=new --remote-debugging-port=$CDP_PORT --user-data-dir=$UDD \
   --window-size=980,760 --no-first-run --no-default-browser-check about:blank >/tmp/$TAG-chrome.log 2>&1 &
 CPID=$!
