@@ -1,0 +1,113 @@
+/* 五连块匣 — one stylesheet, no framework, no build step, no image assets.
+   Layout: the 匣 (canvas: board + tray) on the left, the readout on the right; stacked under
+   860px so a phone gets a full-width box and a short panel. Palette: ink, brass, jade. */
+
+:root {
+  --bg: #0e1013;
+  --bg-2: #14171d;
+  --panel: #171b22;
+  --line: rgba(226, 232, 240, 0.10);
+  --ink: #e7eaf0;
+  --ink-dim: #8d97a7;
+  --brass: #d8b45a;
+  --brass-dim: #7a6528;
+  --jade: #6fd0b6;
+  --rust: #d8795a;
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", monospace;
+  --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 100% at 50% 0%, var(--bg-2), var(--bg) 62%);
+  color: var(--ink); font-family: var(--mono); -webkit-font-smoothing: antialiased;
+  overflow: hidden; user-select: none; cursor: default;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+
+.topbar { display: flex; align-items: center; gap: 18px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.brand { font-size: 16px; letter-spacing: 0.06em; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
+.brand small { color: var(--ink-dim); font-size: 10px; letter-spacing: 0.28em; }
+.brand-mark { color: var(--brass); }
+.modes { display: flex; gap: 4px; }
+.modes button { padding: 6px 14px; font-size: 13px; color: var(--ink-dim); border: 1px solid transparent; border-radius: 6px; }
+.modes button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.modes button[aria-current="true"] { color: var(--brass); border-color: rgba(216, 180, 90, 0.4); background: rgba(216, 180, 90, 0.08); }
+.totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
+.totals b { color: var(--brass); font-weight: 600; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 324px; gap: 18px; padding: 18px; height: calc(100% - 53px); }
+.board { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+#lot { width: 100%; height: 100%; min-height: 0; display: block; touch-action: none; }
+.hint-line { min-height: 20px; font-size: 12px; color: var(--ink-dim); text-align: center; }
+.hint-line b { color: var(--jade); font-weight: 600; }
+.hint-line .no { color: var(--rust); }
+
+.panel { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow: auto; }
+.crumbs { font-size: 12px; color: var(--ink-dim); letter-spacing: 0.04em; }
+.crumbs b { display: block; font-size: 20px; color: var(--ink); font-weight: 600; margin-top: 2px; }
+.crumbs .band { color: var(--brass); }
+.crumbs .seed { color: var(--ink-dim); font-size: 11px; }
+
+.readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.readout > div { border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; background: rgba(255, 255, 255, 0.02); }
+.readout dt { font-size: 10px; color: var(--ink-dim); letter-spacing: 0.14em; }
+.readout dd { font-size: 21px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.readout dd small { font-size: 11px; color: var(--ink-dim); }
+.readout .proof dd { color: var(--jade); }
+.readout .depth dd { color: var(--brass); }
+.readout .moves dd.over { color: var(--rust); }
+.readout .best dd { color: var(--jade); }
+
+.controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.controls button { padding: 10px 4px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, 0.03); color: var(--ink); }
+.controls button:hover:not(:disabled) { border-color: rgba(216, 180, 90, 0.5); color: var(--brass); }
+.controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* 块色对照: twelve swatches, each painted from the --chip the app inlines from PIECE_COLOURS.
+   Inline flow rather than flex so a swatch stays glued to the letter it stands for. */
+.legend { font-size: 11px; color: var(--ink-dim); line-height: 2; letter-spacing: 0.04em; }
+.chip { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--chip); margin: 0 4px 0 7px; vertical-align: 0; }
+.legend .chip:first-child { margin-left: 0; }
+
+.shelf { display: flex; flex-wrap: wrap; gap: 6px; }
+.shelf .tier { width: 100%; font-size: 11px; color: var(--ink-dim); margin-top: 6px; letter-spacing: 0.1em; }
+.shelf button { min-width: 40px; padding: 7px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-dim); }
+.shelf button:hover { color: var(--ink); border-color: rgba(226, 232, 240, 0.3); }
+.shelf button.done { color: var(--brass); border-color: rgba(216, 180, 90, 0.35); }
+.shelf button.perfect { color: var(--jade); border-color: rgba(111, 208, 182, 0.35); }
+.shelf button.here { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
+.shelf button:disabled { opacity: 0.28; }
+.shelf .wide { width: 100%; }
+
+.about { font-size: 11px; color: var(--ink-dim); line-height: 1.75; border-top: 1px solid var(--line); padding-top: 10px; }
+.about summary { cursor: pointer; letter-spacing: 0.08em; }
+.about b { color: var(--ink); font-weight: 600; }
+.about i { color: var(--brass); font-style: normal; }
+.about code { color: var(--brass); font-size: 10px; }
+.about p + p { margin-top: 8px; }
+.about .save { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.about #wipe { font-size: 10px; padding: 5px 9px; color: var(--ink-dim); border: 1px solid rgba(216, 180, 90, 0.4); border-radius: 6px; }
+.about #wipe[aria-pressed="true"] { color: var(--rust); border-color: rgba(216, 121, 90, 0.6); }
+
+.curtain { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 12, 15, 0.74); backdrop-filter: blur(3px); border-radius: 12px; }
+.curtain[hidden] { display: none; }
+.curtain-card { width: min(320px, 88%); border: 1px solid rgba(216, 180, 90, 0.35); border-radius: 14px; background: var(--bg-2); padding: 22px; text-align: center; }
+.stars { font-size: 26px; letter-spacing: 0.2em; color: var(--brass); }
+.curtain-card h2 { font-size: 19px; margin: 6px 0 8px; }
+.tally { font-size: 12px; color: var(--ink-dim); line-height: 1.8; }
+.tally b { color: var(--ink); }
+.proof { font-size: 11px; color: var(--jade); margin-top: 8px; line-height: 1.7; }
+.curtain-actions { display: flex; gap: 8px; margin-top: 16px; }
+.curtain-actions button { flex: 1; padding: 10px; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; }
+.curtain-actions .primary { border-color: rgba(216, 180, 90, 0.6); color: var(--brass); background: rgba(216, 180, 90, 0.1); }
+
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); font-size: 12px; color: var(--brass); }
+.toast[hidden] { display: none; }
+
+@media (max-width: 860px) {
+  .stage { grid-template-columns: 1fr; height: auto; overflow: auto; }
+  body { overflow: auto; }
+  .board { height: 62vh; }
+}

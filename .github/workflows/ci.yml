@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The board model, the dancing-links solver, the logic depth meter, the generator and the
+  # shipped pool are pure ES modules: no browser, no install step. Two suites are the reason
+  # this job exists:
+  #   * anchor.test.mjs — the twelve pentominoes on 3x20 / 4x15 / 5x12 / 6x10 are counted
+  #     exhaustively and must come back 2 / 368 / 1010 / 2339 up to the rectangle's
+  #     symmetries, the published figures. A wrong cover rule shows up here as a wrong count,
+  #     roughly 18 s of real search;
+  #   * library.test.mjs — every one of the thirty baked rows in js/data/lots.js is re-proved
+  #     from its serialised form, so a hand-edited par or a stale bake fails the build.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Layering
+        run: node tools/check.mjs
+      - name: Suites
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # Nothing above touches a pixel. The shell — route resolution, the tray, the drag-and-drop
+  # snapping, the save file — only exists behind `window.pentapack`, and the pointer paths are
+  # driven with real mouse events, so this job is the only proof the game is playable.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 240
+        run: bash tools/verify.sh
