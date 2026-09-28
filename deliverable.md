@@ -11,7 +11,7 @@
 | 求解器校订 | 4 个公开锚点全对：3×20=2、4×15=368、5×12=1010、6×10=2339（`nodes` 与耗时见 §实测记录） |
 | 内容 | 30 关烘焙（5 档 × 6 关，900 格匣面）+ 每日匣 + 随机匣；每关随包发布 `解数=1` 证明与 `推理深度` 测量 |
 | 门禁 | `bash tools/verify.sh` → `=== ALL GREEN ===` / `exit 0`，本机 web 5197 + devtools 9357 的真实 headless Chrome |
-| 上线 | 见 §发布记录 |
+| 上线 | <https://z-biz-game.github.io/pentapack-cos/>（200）；CI 与 Deploy 在 `61bd51f` 同 SHA 双绿，日志自打印 160/86 行、fail 0；线上重跑浏览器层 86 行 / fail 0 —— 全部实测见 §发布记录 |
 
 ## 任务摘要
 
@@ -42,7 +42,7 @@ tools/ bake.mjs proof.mjs check.mjs harness.mjs playtest.mjs verify.sh
 ```
 
 浏览器要下载的全部东西 = `index.html + css/ + js/`：14 个文件、3,493 行；
-`js/core/` 2,004 行；测试与台架 3,896 行（比 shipped 还多，这是刻意的）。
+`js/core/` 2,004 行；测试与台架 4,086 行（比 shipped 还多，这是刻意的）。
 
 ## 门禁实跑记录（本机一次真跑，`bash tools/verify.sh`）
 
@@ -85,7 +85,8 @@ iron   k=8 窗口 4-7  实测 4,5,6,4,7,4
 
 ## 改动表：一开始错在哪 → 现在为什么对
 
-产品缺陷 5 处，测试自身写错 10 处。完整的定性过程与依据在 `DESIGN.md` §9；这里是清点。
+产品缺陷 5 处（1-5），测试自己写错 8 处（6-12、14），空断言 1 处（13），台架与发布脚本缺陷 3 处
+（15、17、18），覆盖缺口 1 处（16）。完整的定性过程与依据在 `DESIGN.md` §9；这里是清点。
 
 | # | 现象 | 定性 | 处理 |
 | --- | --- | --- | --- |
@@ -105,6 +106,8 @@ iron   k=8 窗口 4-7  实测 4,5,6,4,7,4
 | 14 | 新写的 `test/game.test.mjs` 三行红 | 测试错 ×3（实测定性） | ① 新旧姿态可合法重叠，被保留的格不是 bug；② `done` 之后一切变更被拒（浪费必须发生在收尾那一落之前）；③ 锚点是 bbox 角，V 姿态 3 不覆盖自己锚点 |
 | 15 | 门禁曾在**别人（上一次自己）留下的** Chrome/服务上跑出 20/20 | 台架缺陷 → 假绿 | `tools/verify.sh` 开跑前检查 9357/5197 是否已被占用，占用则 `exit 6` 并打印持有者；收尾确认 Chrome 真退出才算绿 |
 | 16 | `game.js` 文件头指向一个从未存在的 `test/game.test.mjs` | 覆盖缺口 | 补 22 行 suite；并把 `tools/check.mjs` 同时接进本地门禁与 CI unit job（此前只有 `npm test` 跑它） |
+| 17 | 本机 `=== ALL GREEN ===` 而 CI 的 browser job 在第一步就废：`mktemp: too few X's in template 'pentapack'` → `--user-data-dir=` 空 → 30 s 后只报 "devtools never bound on :9357" | 台架缺陷（平台差异） | macOS 的 `mktemp -t` 把参数当前缀，GNU 把它当模板且模板必须以 X 结尾。改成 `mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX"`（两边都接受，profile 目录仍带车道前缀），并加 exit 7：目录没真建出来就当场退出，不让下一个失败顶着误导性的结论 |
+| 18 | 建仓 API 回 201，但 org 上的 About 是一串 `u4e94u8fdeu5323…` | 发布脚本缺陷 | curl 的 config 里 `data = <内联>` 会做反斜杠转义处理：`json.dumps` 先把中文转成 `\u4e94`，curl 再把 `\` 吃掉。改为 `data = "@file"`（curl 原样读文件字节），并对本仓 `PATCH /repos/…` 修回正确的中文描述 |
 
 另外三处属于"红是因为门禁变严了"，不是回归：console grep 加宽到 `[log:*]`；聚合器由手搓花括号
 计数换成 `json.JSONDecoder().raw_decode`（中文文本里嵌套的 `{` 会让前者永不归零，于是整个 suite
@@ -116,9 +119,36 @@ iron   k=8 窗口 4-7  实测 4,5,6,4,7,4
 {"build_type":"workflow"}`（GITHUB_TOKEN 无权创建 Pages 站点，第一次 push 之后再建就来不及）→
 push → 读 Actions 自己打印的行数（绿徽章不是证明）→ 对线上 URL 重跑浏览器门禁。
 
-（本节在部署完成后按实测填写：仓 URL、CI run 与 Deploy run 的结论、Pages 部署产物清单、
-以及对 `https://z-biz-game.github.io/pentapack-cos/` 重跑 `@boot/@play/@routes/@save/@pointer` 的
-行数与失败数。）
+（2026-09-28 实测。绿徽章不是证明：下面每一条要么是 API/日志里的原文，要么是一条真跑的输出。）
+
+- 远端仓：<https://github.com/z-biz-game/pentapack-cos> —— `visibility public`、`default_branch main`、
+  `homepage https://z-biz-game.github.io/pentapack-cos/`。
+- 顺序：`POST /orgs/z-biz-game/repos`(201) → **紧接着** `POST /repos/…/pages {"build_type":"workflow"}`(201，
+  仓还是空的也接受) → `git push -u origin main`。先 enable 再 push 是省掉抢跑的钥匙：GITHUB_TOKEN
+  无权创建 Pages 站点，push 之后再 enable 的话，push 触发的那条 deploy 一定红在 configure-pages 上。
+- 作者/committer：两个提交都是 `z-biz-game <bot@z-biz-game.dev>`（per-repo `-c` 设置，不动全局身份）。
+- 按 `head_sha` 分组的 run 结论（同一仓的 CI 与 Pages 是两条 run，重跑还会原地改结论，所以不看"最新几条"）：
+
+  | SHA | run | 结论 |
+  | --- | --- | --- |
+  | `3a40888` | CI 36375043541 | **failure** —— browser job 的 "Headless playtest" 死在 `mktemp: too few X's`，见 §9 第 17 条 |
+  | `3a40888` | Deploy 36375043546 | success（站点在第一个 SHA 就发出去了） |
+  | `61bd51f` | CI 36375338526 | success（unit + browser 两个 job） |
+  | `61bd51f` | Deploy 36375338476 | success（`actions/deploy-pages@v4`，`Created deployment for 61bd51f…`） |
+
+- CI 日志自己打印的数字（Linux runner，`61bd51f`）：unit job 十段合计 **rows 160 / fail 0**；
+  browser job `@boot 16 / @play 20 / @routes 15 / @save 15 / @pointer 20`，
+  `=== console === (none)`，`chrome exited`，`=== ALL GREEN ===`。**与本机同一套数字**，
+  所以那 86 行在 runner 上确实被跑过，不是跳过了才绿的。
+- 站点连通：`curl -o /dev/null -w '%{http_code}' https://z-biz-game.github.io/pentapack-cos/`
+  连测 6 次（11:53:11–11:53:23）全 **200**。
+- 产物清单：`index.html` 引用的两个本地文件（`css/game.css`、`js/main.js`）都 200；
+  仓内 `js/` + `css/` 共 **13 个文件逐个对线上取，missing 0** —— 少拷一个的形态就是这里红。
+- 线上重跑浏览器层（第三层，只有真站点能给）：
+  `BASE_URL=https://z-biz-game.github.io/pentapack-cos/ SKIP_UNIT=1 WEB_PORT=5199 CDP_PORT=9359 bash tools/verify.sh`
+  → 86 行 / fail 0 / console `(none)` / chrome exited / **exit 0**。
+- 顺手修的一处发布脚本缺陷：建仓时 `description` 到达 org 上是 `u4e94u8fdeu5323…`（§9 第 18 条），
+  已 `PATCH /repos/…` 写回正确的中文；脚本改为 `data = "@file"`，下一仓不再重演。
 
 ## 已知边界
 

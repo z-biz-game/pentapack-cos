@@ -112,7 +112,9 @@ console: (none)      chrome exited      === ALL GREEN ===      exit 0
 
 `@pointer` 是这台台架里最贵的一段：它用 CDP 的 `Input.dispatchMouseEvent` 发真的
 按下-移动-松开，不看内部变量只看面板和棋盘。线上版本见
-[https://z-biz-game.github.io/pentapack-cos/](https://z-biz-game.github.io/pentapack-cos/)。
+[https://z-biz-game.github.io/pentapack-cos/](https://z-biz-game.github.io/pentapack-cos/)——
+那 86 行浏览器断言是照着这个 URL 重跑过的（fail 0，console 干净），
+CI 的 browser job 在 Linux runner 上跑的是同一个 `tools/verify.sh`、同一套数字。
 
 ## 已知边界
 

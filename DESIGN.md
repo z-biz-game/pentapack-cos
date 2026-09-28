@@ -176,7 +176,7 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 经 CDP 打真实事件，五个场景一轮一轮共用同一个 tab（`@boot @play @routes @save @pointer`）。
 本仓专属端口 **web 5197 / devtools 9357**（兄弟仓默认 5180/9340，批次用 5185-5196/9345-9356）。
 
-三处设计是为了不让"绿"变成 opinion：
+四处设计是为了不让"绿"变成 opinion：
 
 1. **开跑前拒绝占用**：任一端口上已有**监听**就直接 `exit 6` 并打印持有者 PID。判据是一次
    `net.connect`（node 本来就是硬依赖），不是 `curl /json/version` —— 后者会放过一个对
@@ -185,6 +185,10 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
    而它驱动的是它自己没启动的那个浏览器。**端口撞车产出的是假判决，不是不便。**
 2. **脏 console 算红**：聚合器 grep `[error] [EXCEPTION] [warning] [log:*] uncaught typeerror referenceerror`。
 3. **收尾确认 Chrome 真退了**才写 `=== ALL GREEN ===`，否则红着退出；`exit $FAILED` 是真的退出码。
+4. **门禁脚本本身要能在 Linux runner 上跑完**：CI 的 browser job 执行的就是这个文件，
+   所以任何 macOS-only 的写法都等于"绿"里有一段从没被执行过。实测踩到的是
+   `mktemp -d -t <前缀>`（GNU 要的是模板，报 too few X's，于是 profile 目录是空的，
+   Chrome 起不来，最后只留下一句 "devtools never bound"）—— 见 §9 第 17 条。
 
 机器可读的输出形状（`rows: N fail: M`）由 `tools/harness.mjs` 统一，
 浏览器场景的行也是行，`tools/verify.sh` 与 CI 用同一个 grep 求和。
@@ -193,7 +197,8 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
 ## 9. 更正记录：一开始错在哪 → 现在为什么对
 
-产品缺陷 4 处，测试自身写错 11 处。每一条都有实测。
+产品缺陷 5 处（1-5），测试自身写错 8 处（6-12、14），空断言 1 处（13），缺 suite 1 处（15），
+台架与发布脚本缺陷 3 处（16-18）。每一条都有实测。
 
 | # | 现象 | 定性 | 现在的依据 |
 | --- | --- | --- | --- |
@@ -212,6 +217,9 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 | 13 | `@play` 的"完成判定不是填满就算"一行 `return true`，且所谓"换掉解答"是原样复制 | 空断言（假绿） | 真的把存档线改成 `x+1`，按真解答装满，断言 `done===false && anomaly==='second-solution'` 且面板有"异常" |
 | 14 | 新写的 `test/game.test.mjs` 三行红 | 测试错 ×3（实测判定） | ① 新旧姿态可合法重叠，被保留的格不是 bug；② `done` 之后一切变更被 `code:'done'` 拒绝，浪费必须发生在收尾那一落之前；③ 锚点是 bbox 角，V 姿态 3 不覆盖自己锚点，`pieceAt` 读它是空的 |
 | 15 | `game.js` 文件头指向一个从未存在的 `test/game.test.mjs` | 缺 suite | 补上，22 行；顺带发现 `tools/check.mjs` 与 `tools/proof.mjs` 只在 `npm test` 里跑、CI 不跑，已把 check 加进 CI 与本地门禁 |
+| 16 | 一次一次性探针留下 9357 上的 Chrome 与 5197 上的服务，之后的门禁报 20/20 全过 —— 它驱动的是自己没启动的那个浏览器 | 台架缺陷 → 假绿 | `tools/verify.sh` 开跑前对两个端口各做一次 `net.connect`，有人在听就 `exit 6` 并打印持有者；收尾必须看到 Chrome 真退出才写 `ALL GREEN`（§8） |
+| 17 | 本机 `=== ALL GREEN ===`，CI 的 browser job 却在第一行就废：`mktemp: too few X's in template 'pentapack'`，于是 `--user-data-dir=` 是空的，30 s 后只报 "devtools never bound on :9357" | 台架缺陷（平台差异） | macOS 的 `mktemp -t` 把参数当**前缀**，GNU 把它当**模板**且模板必须以 X 收尾。改成 `mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX"`（两边都吃，profile 仍带车道名），再加 exit 7：目录没建出来就当场退出，不让下一处失败顶着一个错误结论 |
+| 18 | 建仓 API 回 201，org 上的 About 却是 `u4e94u8fdeu5323…` | 发布脚本缺陷 | curl 的 config 里 `data = <内联值>` 会做反斜杠转义：`json.dumps` 把中文写成 `\u4e94`，curl 再把 `\` 吃掉，GitHub 收到的就是字面 `u4e94`。改成 `data = "@file"`（curl 原样读文件字节），并对本仓 `PATCH` 修回正确描述 |
 
 ## 10. 没做与为什么没做
 
