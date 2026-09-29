@@ -120,7 +120,7 @@ iron   k=8 窗口 4-7  实测 4,5,6,4,7,4
 | 22 | `js/core/library.js:12` 的注释引用 `tools/balance.mjs` 并写"每关约 1 ms 实测"，而那个文件**从没在这个仓里存在过**（`git log -- tools/balance.mjs` 为空） | 理由注释没有台架 | 补 `tools/balance.mjs`（15 格 × 300 draws 的生成率扫描 + `--check` 的整数等式）并接进 `npm run verify`，注释里的引用从此是真的；ms 措辞改成"本机读数"，因为没有任何断言比它 |
 | 23 | `js/core/make.js` 的 BANDS 窗口注释贴着一段"实测深度直方图"，但那些数没有任何一条命令产出过 | 注释是编的 | 换成 `rawSweep()` 本轮真测的 window-free 直方图（`_tmp-penta-balance-full-r13.log`），并把"平均深度随 k 右移"这条方向性做成 `--check` 每次 CI 都断言的整数比较 |
 | 24 | 破坏试验台账第一轮报"K18 与预期不符"：台账进程在跑，同一把刀还在被改（旧 K18 是"删一条断言"，被删的那条本来不参与判定，当然不红） | 台架自欺 | 换成防空转版本（把 `balance --check` 的节点上界收到本轮读数以下 → `14 breach(es)` + 非零 rc）；规矩写进 README §台账：**台账必须跑在树和刀都定稿之后**，本轮的 20 枪因此重跑了一遍（`_tmp-pentapack-sab-run-r14.log`：20 枪 / 0 与预期不符 / `SAB_RC=0`）。同一轮里 N2 那把对照刀以 `ERROR needle count 0` 死过一次 —— 它认的是重写前的旧 README 句子，针打不中就点名，不静默跳过 |
-| 25 | README 写着"`balance --check` 挂在 `npm run verify` 的 node 层里，所以 CI 每次都跑它"，而 `472d535` 的 CI 日志里 `balance` 出现 **0 次**：browser job 设 `SKIP_UNIT=1`，verify.sh 把整个 node 层（含 balance）跳过去了 | 承诺没有 CI 覆盖（文档说得比门禁严） | 把它变成 unit job 的 `Generator yield` 一步（本机 0.59 s，加在 Linux runner 上不成负担），并在 README 补一张"哪条命令真的在 CI 里跑"的表：unit 跑什么、browser 跑什么、`proof` 为什么不必单独跑（它的四个锚点由 `anchor.test.mjs` 在 unit job 里真穷举） |：台账进程在跑，同一把刀还在被改（旧 K18 是"删一条断言"，被删的那条本来不参与判定，当然不红） | 台架自欺 | 换成防空转版本（把 `balance --check` 的节点上界收到本轮读数以下 → `14 breach(es)` + 非零 rc）；规矩写进 README §台账：**台账必须跑在树和刀都定稿之后**，本轮的 20 枪因此重跑了一遍 |
+| 25 | README 写着"`balance --check` 挂在 `npm run verify` 的 node 层里，所以 CI 每次都跑它"，而 `472d535` 的 CI 日志里 `balance` 出现 **0 次**：browser job 设 `SKIP_UNIT=1`，verify.sh 把整个 node 层（含 balance）跳过去了 | 承诺没有 CI 覆盖（文档说得比门禁严） | 把它变成 unit job 的 `Generator yield` 一步（本机 0.59 s，加在 Linux runner 上不成负担），并在 README 补一张"哪条命令真的在 CI 里跑"的表：unit 跑什么、browser 跑什么、`proof` 为什么不必单独跑（它的四个锚点由 `anchor.test.mjs` 在 unit job 里真穷举） |
 
 另外三处属于"红是因为门禁变严了"，不是回归：console grep 加宽到 `[log:*]`；聚合器由手搓花括号
 计数换成 `json.JSONDecoder().raw_decode`（中文文本里嵌套的 `{` 会让前者永不归零，于是整个 suite
@@ -148,11 +148,20 @@ push → 读 Actions 自己打印的行数（绿徽章不是证明）→ 对线�
   | `3a40888` | Deploy 36375043546 | success（站点在第一个 SHA 就发出去了） |
   | `61bd51f` | CI 36375338526 | success（unit + browser 两个 job） |
   | `61bd51f` | Deploy 36375338476 | success（`actions/deploy-pages@v4`，`Created deployment for 61bd51f…`） |
+  | `472d535` | CI 36609210443 | success —— 但读日志才发现 unit job 里没有 `balance`，见 §9 第 25 条 |
+  | `472d535` | Deploy 36609210401 | success |
+  | `cdf58d8` | CI 36609700658 | success，且 unit job 自己打印 `balance --check: 15 cells, 0 breaches`（`Generator yield` 那一步） |
+  | `cdf58d8` | Deploy 36609700572 | success（build + deploy 两个 job） |
 
-- CI 日志自己打印的数字（Linux runner，`61bd51f`）：unit job 十段合计 **rows 160 / fail 0**；
-  browser job `@boot 16 / @play 20 / @routes 15 / @save 15 / @pointer 20`，
-  `=== console === (none)`，`chrome exited`，`=== ALL GREEN ===`。**与本机同一套数字**，
-  所以那 86 行在 runner 上确实被跑过，不是跳过了才绿的。
+- 2026-09-30 这一轮 `cdf58d8` 的 CI 原文数字（Linux runner，日志本身，不是徽章）：unit job
+  `rows:` 依次 16 → `balance --check: 15 cells, 0 breaches` → 20/15/12/23/27/11/17/15/8/10，
+  合计 **174 行 / fail 0**；browser job `@boot 16 @play 20 @routes 15 @save 15 @pointer 20`、
+  `=== console === (none)`、`chrome exited`、`=== ALL GREEN ===`。**与本机那一次逐字相同**。
+- 线上第四层（只有真站点能给，2026-09-30）：
+  `BASE_URL=https://z-biz-game.github.io/pentapack-cos/ SKIP_UNIT=1 WEB_PORT=5199 CDP_PORT=9359 bash tools/verify.sh`
+  → 86 行 / fail 0 / console `(none)` / chrome exited / `LIVE_RC=0`（`_tmp-penta-live-r15.log`）。
+  根 URL 连测 6 次全 200；`css/game.css`、`js/main.js`、`js/data/lots.js`、`js/core/dlx.js` 逐个 200，
+  而故意不存在的一个路径回 404 —— 这条探针自己也得能被证伪，否则 200 是它坏了。
 - 站点连通：`curl -o /dev/null -w '%{http_code}' https://z-biz-game.github.io/pentapack-cos/`
   连测 6 次（11:53:11–11:53:23）全 **200**。
 - 产物清单：`index.html` 引用的两个本地文件（`css/game.css`、`js/main.js`）都 200；

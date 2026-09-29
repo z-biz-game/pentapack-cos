@@ -241,10 +241,15 @@ console: (none)      chrome exited      === ALL GREEN ===
 | `tools/balance.mjs --check` | **本轮之前哪里都不跑** —— 只在 `verify.sh` 的 node 层里，而 browser job 把那一层整段跳过。现已是 unit job 的 `Generator yield` 一步 | 不跑 |
 | `tools/proof.mjs` | 不单独跑（四个锚点的真穷举在 `anchor.test.mjs` 里，unit job 跑的是它） | 不跑 |
 
-`472d535` 那次 CI 自己打印的数字（Linux runner，日志原文，不是徽章）：unit job `rows:` 依次
-16 / 20 / 15 / 12 / 23 / 27 / 11 / 17 / 15 / 8 / 10 —— **合计 174 / fail 0**，与本机同一次跑逐字相同；
-browser job `=== ALL GREEN ===`、`@boot 16 @play 20 @routes 15 @save 15 @pointer 20`。
-两条 run（CI 与 Deploy）都在该 SHA 上 success。
+`472d535` 那次的 unit job 打印了 `rows:` 16 / 20 / 15 / 12 / 23 / 27 / 11 / 17 / 15 / 8 / 10
+= **174 行 / fail 0**，但没有 `balance` —— 那一格当时只在开发机上跑。补上之后的 `cdf58d8`
+（Linux runner，日志原文，不是徽章）：unit job 现在是 16 → `balance --check: 15 cells, 0 breaches`
+→ 20/15/12/23/27/11/17/15/8/10，browser job `=== ALL GREEN ===`、
+`@boot 16 @play 20 @routes 15 @save 15 @pointer 20`。CI 与 Deploy 都在该 SHA 上 success。
+第四层是对**已上线站点**重跑浏览器层（`BASE_URL=https://z-biz-game.github.io/pentapack-cos/
+SKIP_UNIT=1 WEB_PORT=5199 CDP_PORT=9359 bash tools/verify.sh`）：86 行 / fail 0 /
+console `(none)` / `LIVE_RC=0`；根 URL 连测 6 次全 200，四个真实资产逐个 200，
+一个故意不存在的路径回 404。
 
 ---
 
