@@ -112,7 +112,14 @@ export const store = {
     next.unlock = Math.max(cur.unlock, Number(patch.unlock) || 0);
     for (const [id, rec] of Object.entries(next.best)) {
       const old = cur.best[id];
-      if (old && old.moves <= rec.moves) next.best[id] = old;
+      if (!old) continue;
+      // "only ever goes DOWN" is about the pair the panel prints (js/main.js:181 renders
+      // `${best.moves} 步 · ${best.seconds}s`): fewer moves wins outright, and at equal moves a
+      // faster clock time is an improvement. A bare `old.moves <= rec.moves` guard threw away the
+      // tie-break that record() above had just computed — `improved: true` with the old seconds
+      // still on disk. (test/storage.test.mjs; 破坏试验 K11.)
+      const better = rec.moves < old.moves || (rec.moves === old.moves && rec.seconds < old.seconds);
+      if (!better) next.best[id] = old;
     }
     memory = next;
     // `encode`, not a bare JSON.stringify: the one place that decides what the slot's bytes look

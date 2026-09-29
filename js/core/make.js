@@ -42,14 +42,19 @@ export const FRAME_H = 8;
 // numbers that are *measurements* of a level, never by how long the generator took and never
 // by how much the player moved (the move counter is an economy, see js/core/game.js).
 // The windows below are not aspirations: they were read off the measured depth histogram of
-// unique random levels (`node tools/balance.mjs`, ~300 draws per (bias, k) cell), which for
-// an 8x8 scatter frame spans depth 0..7 and shifts right as k grows:
-//   k=4  {0:23, 1:19, 2:14, 3:2}    k=5  {0:14, 1:12, 2:10, 3:11, 4:2}
-//   k=6  {0:4,  1:12, 2:10, 3:16, 4:6, 5:2}
-//   k=7  {0:2,  1:4,  2:5,  3:7,  4:8, 5:11, 6:4}
-//   k=8  {1:1,  2:2,  3:4,  4:7,  5:10, 6:6, 7:1}
-// Each band window below therefore holds a healthy share of its column, so a seed needs only
-// a few attempts. test/make.test.mjs asserts every band is inhabited and monotone in depth.
+// unique random levels, which `node tools/balance.mjs` prints as its "window-free" block (300
+// one-attempt draws per (bias, k) cell, depth window opened to [0, Infinity] so the sample is not
+// pre-filtered by the very windows being chosen). This machine, bias 2, 2026-09-30:
+//   k=4  269 unique  {0:111, 1:95, 2:50, 3:13}
+//   k=5  256 unique  {0:65,  1:75, 2:69, 3:35, 4:12}
+//   k=6  240 unique  {0:20,  1:34, 2:63, 3:73, 4:44, 5:6}
+//   k=7  223 unique  {0:1,   1:4,  2:20, 3:61, 4:74, 5:57, 6:6}
+//   k=8  172 unique  {0:1,   1:2,  2:6,  3:25, 4:62, 5:53, 6:20, 7:3}
+// So an 8x8 scatter frame really spans depth 0..7, and `node tools/balance.mjs --check` asserts
+// the one thing these rows are used for — that the mean measured depth rises with k at every bias
+// — as an integer fact on every CI run, not as a number frozen in this comment. Each window below
+// holds a healthy share of its column, so a seed needs only a few attempts; test/make.test.mjs
+// asserts every band is inhabited and monotone in depth.
 export const BANDS = [
   { id: 1, key: 'taster', name: '上手匣', k: [4, 4], depth: [0, 1] },
   { id: 2, key: 'easy', name: '常匣', k: [5, 5], depth: [1, 3] },
@@ -200,6 +205,8 @@ export function isConnected(mask, w, h) {
 //     maxAttempts number          cap on packing attempts (default 400)
 //     bias        number          adjacency exponent (default 2)
 //     deadlineFn  () => boolean   injected "we ran out of time" predicate
+//     maxNodes    number          forwarded to dlx.js: the uniqueness proof's hang guard, so a
+//                                 caller (or a test) can force the `capped` branch
 //     pool        string[]        piece pool (default the twelve)
 //   }
 // `stats` reports every gate the candidate failed, so the acceptance rate is auditable:
@@ -253,7 +260,7 @@ export function makeLevel(opts = {}) {
       piece: index.get(p.piece), variant: p.variant, x: p.x, y: p.y,
     }));
     stats.evaluated++;
-    const verdict = solveLevel(spec, 2); // 2, not Infinity: stop at the first refutation
+    const verdict = solveLevel(spec, 2, opts.maxNodes); // 2, not Infinity: stop at the first refutation
     if (verdict.nodes > stats.maxDlxNodes) stats.maxDlxNodes = verdict.nodes;
     if (verdict.capped) throw new Error('DLX hit its node cap while proving uniqueness');
     if (verdict.count !== 1) { stats.notUnique++; continue; }

@@ -282,4 +282,25 @@ test('姿态下标越界是取模，不是读穿表：cellsFor 与合法下标�
   eq(cellsFor(g, 0, -1, anchor.x, anchor.y).cells, cellsFor(g, 0, 7, anchor.x, anchor.y).cells, 'and it wraps backwards too');
 });
 
+test('星级的两条分界线各自只有一格宽：over=0 三星，over=1..2 两星，over>=3 一星', () => {
+  // The two cases above walk a real board, so they can only ever land on over = 0 and over = 2 —
+  // the board locks at k+2 because 匣满即锁. That left both boundaries of grade() unmeasured: a
+  // rig that moved the three-star line to over <= 1, or the one-star line to over >= 4, kept the
+  // whole gate green (破坏试验 K5/K6, both GREEN before this case existed). grade() is a pure
+  // function of (moves, n), so the states a pointer cannot reach are asserted here instead.
+  const at = (over) => grade({ moves: LOT.k + over, n: LOT.k });
+  eq(at(0), { key: 'perfect', label: '一次到位', stars: 3 }, 'k moves exactly is the only three-star line');
+  eq(at(1).stars, 2, 'one wasted move already drops off the top step');
+  eq(at(2), { key: 'clean', label: '干净装箱', stars: 2 }, 'over=2 is still 干净装箱');
+  eq(at(3), { key: 'loose', label: '反复挪动', stars: 1 }, 'over=3 is the first 反复挪动');
+  eq(at(9).stars, 1, 'and nothing climbs back up');
+  let prev = Infinity;
+  for (let over = 0; over <= 12; over++) {
+    const stars = at(over).stars;
+    ok(stars <= prev, `stars never climb as over grows (over=${over})`);
+    prev = stars;
+  }
+  eq([at(0), at(1), at(2), at(3)].map((g) => g.stars), [3, 2, 2, 1], 'the whole ladder, step by step');
+});
+
 process.exitCode = run();

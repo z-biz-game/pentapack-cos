@@ -10,7 +10,7 @@ js/core/    纯规则层：pieces → board → dlx → logic → make → libra
 js/data/    一张被复证过的测量表（生成的，别手改）
 js/view.js  只画，不判；js/main.js  只装配，不推理
 tools/      烘焙、门禁、真事件台架
-test/       9 个 node suite，跑在裸 node 上
+test/       10 个 node suite，跑在裸 node 上
 ```
 
 四条被 `tools/check.mjs` 机器化了的不变量（16 行断言，全绿）：
@@ -24,7 +24,7 @@ test/       9 个 node suite，跑在裸 node 上
 
 第 2 条不是洁癖。每日匣的链接可以不带日期（`#/daily`），这时"今天那一关"必须仍然成立，
 而唯一读时钟的地方是 `js/main.js:84 const today = () => todayKey(new Date())`，
-它把 key 注入 `resolveRoute(hash, today())`（`js/core/library.js:164`）。
+它把 key 注入 `resolveRoute(hash, today())`（`js/core/library.js:resolveRoute`）。
 规则层自己伸手看表的话，同一链接在两次渲染里会给出两关，而 node suite 永远不会发现这件事。
 
 ## 2. 规则层
@@ -32,7 +32,7 @@ test/       9 个 node suite，跑在裸 node 上
 ### 2.1 姿态：63 个 fixed pentomino，D₄ 轨道表
 
 `js/core/pieces.js` 里十二块各带一个 canonical 姿态，`buildVariants` 用 rot/mirror 生成它的轨道，
-去重后按稳定顺序编号。逐块姿态数 F8 I2 L8 N8 P8 T4 U8 V4 W4 X1 Y8 Z4，合计 **63**。
+去重后按稳定顺序编号。逐块姿态数 F8 I2 L8 P8 N8 T4 U4 V4 W4 X1 Y8 Z4，合计 **63**。
 `test/pieces.test.mjs` 不只数数，还断言群律：rot⁴=1、mirror²=1、`mirror∘rot∘mirror = rot³`，
 以及轨道-稳定子定理 `variantCount × |stabiliser| = 8` 对每一块都成立；
 手写的十二块若不是那个十二块（比如混进 S 或重复一个），模块加载时自检就直接拒绝。
@@ -68,8 +68,9 @@ test/       9 个 node suite，跑在裸 node 上
 ```
 
 `raw = orbits × 4` 不是巧合而是被断言的关系：矩形自身的对称（旋转与镜像）把每条本质不同的铺法
-展开成 4 条固定铺法。这四行由 `test/anchor.test.mjs`（共 20 行，整个文件在本机跑 17.0 s）
-在 CI 里也跑，跑的是真搜索；`node tools/proof.mjs` 打印的就是上面那张表（四行合计约 33 s）。
+展开成 4 条固定铺法。这四行由 `test/anchor.test.mjs`（共 20 行，本机一轮跑 9.4 s——读数，不进断言）
+在 CI 里也跑，跑的是真搜索；`node tools/proof.mjs` 打印的就是上面那张表（本轮四行逐行 92 / 2141 /
+6159 / 9783 ms，同样是读数）。
 另外 `countSolutions(spec, 2)` 的提前停止被单独测过：只要两条解就收工，
 limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
@@ -172,7 +173,8 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
 ## 8. 台架与门禁
 
-`bash tools/verify.sh` = 9 个 node suite + `tools/check.mjs` + 一个真实 headless Chrome
+`bash tools/verify.sh` = 10 个 node suite + `tools/check.mjs` + `tools/balance.mjs --check`
++ 一个真实 headless Chrome
 经 CDP 打真实事件，五个场景一轮一轮共用同一个 tab（`@boot @play @routes @save @pointer`）。
 本仓专属端口 **web 5197 / devtools 9357**（兄弟仓默认 5180/9340，批次用 5185-5196/9345-9356）。
 
@@ -216,7 +218,7 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 | 12 | 原地旋转/镜像两行在 taster-01 上永不成立 | 测试前提错 | 对 30 关全量实测：**满盘解状态下没有一块能在原地转身**（`game.js:140`），taster-01 连单块也不给转（P/V/W → `blocked`，X → `noop`）。手势段换到 taster-02 的 V（单独放在姿态 2 @(2,2)：转→3，再镜像→0，锚点不变），而"转不过去"这条规则本身改由 `test/game.test.mjs` 在纯规则层钉住 |
 | 13 | `@play` 的"完成判定不是填满就算"一行 `return true`，且所谓"换掉解答"是原样复制 | 空断言（假绿） | 真的把存档线改成 `x+1`，按真解答装满，断言 `done===false && anomaly==='second-solution'` 且面板有"异常" |
 | 14 | 新写的 `test/game.test.mjs` 三行红 | 测试错 ×3（实测判定） | ① 新旧姿态可合法重叠，被保留的格不是 bug；② `done` 之后一切变更被 `code:'done'` 拒绝，浪费必须发生在收尾那一落之前；③ 锚点是 bbox 角，V 姿态 3 不覆盖自己锚点，`pieceAt` 读它是空的 |
-| 15 | `game.js` 文件头指向一个从未存在的 `test/game.test.mjs` | 缺 suite | 补上，22 行；顺带发现 `tools/check.mjs` 与 `tools/proof.mjs` 只在 `npm test` 里跑、CI 不跑，已把 check 加进 CI 与本地门禁 |
+| 15 | `game.js` 文件头指向一个从未存在的 `test/game.test.mjs` | 缺 suite | 补上，当时 22 行（本轮 23 行）；顺带发现 `tools/check.mjs` 与 `tools/proof.mjs` 只在 `npm test` 里跑、CI 不跑，已把 check 加进 CI 与本地门禁 |
 | 16 | 一次一次性探针留下 9357 上的 Chrome 与 5197 上的服务，之后的门禁报 20/20 全过 —— 它驱动的是自己没启动的那个浏览器 | 台架缺陷 → 假绿 | `tools/verify.sh` 开跑前对两个端口各做一次 `net.connect`，有人在听就 `exit 6` 并打印持有者；收尾必须看到 Chrome 真退出才写 `ALL GREEN`（§8） |
 | 17 | 本机 `=== ALL GREEN ===`，CI 的 browser job 却在第一行就废：`mktemp: too few X's in template 'pentapack'`，于是 `--user-data-dir=` 是空的，30 s 后只报 "devtools never bound on :9357" | 台架缺陷（平台差异） | macOS 的 `mktemp -t` 把参数当**前缀**，GNU 把它当**模板**且模板必须以 X 收尾。改成 `mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX"`（两边都吃，profile 仍带车道名），再加 exit 7：目录没建出来就当场退出，不让下一处失败顶着一个错误结论 |
 | 18 | 建仓 API 回 201，org 上的 About 却是 `u4e94u8fdeu5323…` | 发布脚本缺陷 | curl 的 config 里 `data = <内联值>` 会做反斜杠转义：`json.dumps` 把中文写成 `\u4e94`，curl 再把 `\` 吃掉，GitHub 收到的就是字面 `u4e94`。改成 `data = "@file"`（curl 原样读文件字节），并对本仓 `PATCH` 修回正确描述 |

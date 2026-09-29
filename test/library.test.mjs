@@ -519,4 +519,34 @@ test('what one click costs, measured on the shipped data', () => {
   ok(Math.max(...iron) > Math.max(...taster), `iron boxes cost more to prove (${Math.max(...iron)} vs ${Math.max(...taster)} nodes)`);
 });
 
+test('出货的深度序列是钉死的字面表，不是一张跟着数据自算的统计表', () => {
+  // stats() prints min/max/avg per band and the case above compares them to FILE_ROWS — that
+  // comparison is arithmetic, not a golden, so it cannot notice the curve itself flattening.
+  // 破坏试验 K15 proved the same thing from the other side: stubbing bandName() to echo the stored
+  // band left the whole gate GREEN, because `mislabelled` then agrees with itself by construction.
+  // bandName has literal goldens of its own (test/make.test.mjs, which K4 does bite), so the label
+  // is safe — what was missing is a literal for the measured depths. This is that literal: a
+  // re-bake that shifts the curve goes RED here and forces the table (and README.md with it) to be
+  // re-read on purpose.
+  const PINNED = {
+    taster: [1, 1, 0, 1, 1, 0],
+    easy: [2, 2, 2, 2, 1, 2],
+    mid: [3, 4, 3, 2, 3, 4],
+    hard: [3, 4, 3, 5, 3, 4],
+    iron: [4, 5, 6, 4, 7, 4],
+  };
+  eq(Object.keys(PINNED), BANDS.map((b) => b.key), 'the pinned bands are the ladder, in order');
+  for (const band of Object.keys(PINNED)) {
+    eq(FILE_ROWS.filter((r) => r.band === band).map((r) => r.depth), PINNED[band], `${band}: measured depths, campaign order`);
+  }
+  const flat = BANDS.flatMap((b) => PINNED[b.key]);
+  eq(flat.length, FILE_ROWS.length, 'and the five rows above cover all thirty lots');
+  eq(flat.reduce((a, d) => a + d, 0), 86, 'total assumption depth over the campaign');
+  eq(FILE_ROWS.filter((r) => PINNED[r.band].indexOf(r.depth) < 0).length, 0, 'no lot sits outside its own pinned window');
+  for (const b of BANDS) {
+    const seq = PINNED[b.key];
+    ok(seq.every((d) => d >= b.depth[0] && d <= b.depth[1]), `${b.key}: every pinned depth is inside ${b.depth[0]}..${b.depth[1]}`);
+  }
+});
+
 process.exitCode = run();

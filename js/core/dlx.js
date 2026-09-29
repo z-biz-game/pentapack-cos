@@ -221,9 +221,13 @@ export function countSolutions(target, limit = Infinity) {
 // Does the level have exactly one solution, and what is it? Returns
 // { count, placements, nodes, truncated, capped } with `placements` non-null only when
 // count === 1. Pass limit = 2 to answer "unique?" without enumerating everything.
-export function solveLevel(target, limit = Infinity) {
+// `maxNodes` forwards to searchCount: without it a caller cannot ask for the hang guard at all,
+// and the `capped` branch would be a claim no test could ever reach.
+export function solveLevel(target, limit = Infinity, maxNodes) {
   const problem = compile(target);
-  const r = searchCount(problem, { limit, wantFirst: true });
+  const r = searchCount(problem, maxNodes === undefined
+    ? { limit, wantFirst: true }
+    : { limit, wantFirst: true, maxNodes });
   if (r.count !== 1 || !r.solution || r.solution.length !== problem.spec.pieces.length) {
     return {
       count: r.count, nodes: r.nodes, truncated: r.truncated, capped: r.capped,

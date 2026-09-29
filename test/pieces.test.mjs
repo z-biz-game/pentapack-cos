@@ -13,6 +13,7 @@
 // Every expected number below is written by hand from the published facts about pentominoes
 // (12 free / 18 one-sided / 63 fixed; six chiral: F L P N Y Z), not read back out of js/core.
 
+import { readFileSync } from 'node:fs';
 import { test, run, ok, eq, assert } from '../tools/harness.mjs';
 import {
   SHAPES, NAMES, VARIANT_COUNT, TOTAL_VARIANTS, CELLS, FULL_SET,
@@ -236,6 +237,32 @@ test('js/core/pieces.js refuses to load a wrong twelve (the self-check is the ga
   eq([total, tableSum, TOTAL_VARIANTS], [63, 63, 63], 'closure, hand table and constant all say 63');
   for (const name of NAMES) {
     for (const cells of PIECES[name].variants) eq(cells.length, CELLS, `${name}: a variant is five cells`);
+  }
+});
+
+test('README 与 DESIGN 里那串逐块姿态数就是代码里那张表', () => {
+  // Both prose files print the per-piece pose table by hand ("逐块姿态数 F8 I2 ..."), and until
+  // this case existed nothing read them: README.md and DESIGN.md both carried `U8`, whose twelve
+  // digits sum to 67 while the clause right beside them claimed 合计 63. The code and
+  // HAND_VARIANT_COUNTS above were right; only the prose was lying, and no gate could see it.
+  // So the documents are now an asserted surface: drift in either file turns the build red.
+  for (const doc of ['README.md', 'DESIGN.md']) {
+    const text = readFileSync(new URL(`../${doc}`, import.meta.url), 'utf8');
+    const m = /逐块姿态数((?:\s+[A-Z]\d+)+)/.exec(text);
+    assert(m, `${doc}: prints the per-piece pose table`);
+    const tokens = m[1].trim().split(/\s+/);
+    eq(tokens.length, NAMES.length, `${doc}: the table names all twelve pieces`);
+    const seen = {};
+    for (const tok of tokens) {
+      const [, name, digits] = /^([A-Z])(\d+)$/.exec(tok);
+      seen[name] = Number(digits);
+    }
+    eq(Object.keys(seen).sort(), [...NAMES].sort(), `${doc}: each letter exactly once`);
+    for (const name of NAMES) {
+      eq(seen[name], VARIANT_COUNT[name], `${doc} says ${name}${seen[name]} but js/core/pieces.js says ${name}${VARIANT_COUNT[name]}`);
+    }
+    const sum = NAMES.reduce((a, n) => a + seen[n], 0);
+    eq(sum, TOTAL_VARIANTS, `${doc}'s twelve digits add up to the fixed-pentomino count (${sum})`);
   }
 });
 

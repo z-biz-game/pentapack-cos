@@ -120,6 +120,19 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   # a suite only ever reads the files it imports itself.
   echo "--- tools/check.mjs"
   node tools/check.mjs || FAILED=1
+  # The generator's yield is a probability, so it needs many draws, which no single-call test can
+  # give it. tools/balance.mjs --check folds 40 one-attempt draws per (band, bias) cell through
+  # yieldOf() and asserts the accounting identities, that every rung is reachable at every bias,
+  # that measured depth really moves right with k, that no draw grazed a cap, and that a repeated
+  # sweep prints the same histograms. It prints no `rows:` line, so it adds nothing to the sum.
+  echo "--- tools/balance.mjs --check"
+  # BALANCE_RC, not the pipeline's tail: `| tail` would report awk's success, and a red rig would
+  # look like a green line. The rc is printed into the log so the artifact names its own gate.
+  node tools/balance.mjs --check > /tmp/penta-balance.log 2>&1
+  BALANCE_RC=$?
+  tail -1 /tmp/penta-balance.log
+  echo "balance rc: $BALANCE_RC"
+  [ "$BALANCE_RC" = "0" ] || FAILED=1
 else
   echo "(skipped: SKIP_UNIT=1)"
 fi

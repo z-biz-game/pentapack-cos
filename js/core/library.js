@@ -9,8 +9,12 @@
 //              function of a seed string (js/core/make.js).
 //   random     generated from a link seed, so `#/random?seed=...` is reproducible too.
 //
-// Generation is ~1 ms per level measured (`node tools/balance.mjs`), which is why the last
-// two can afford to run on tap in a browser instead of being pre-baked.
+// Generation cost is measured in search, not in milliseconds: `node tools/balance.mjs` folds 300
+// one-attempt draws through every (bias, k) cell and prints the high-water mark in DLX column
+// selections and reasoning frames. `--check` (which tools/verify.sh runs on every CI job) asserts
+// both stay orders of magnitude below their caps, so the number that justifies the next sentence is
+// re-measured rather than quoted from a comment: a daily or a shared random link can afford to be
+// generated on tap in a browser instead of pre-baked.
 //
 // Pure lookup + pure generation. No DOM here; storage of unlocks lives in js/core/storage.js.
 

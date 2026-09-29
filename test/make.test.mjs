@@ -439,4 +439,26 @@ test('rng streams are the only randomness, and mulberry32 does not repeat soon',
   eq(hashed.size, 300, 'and 300 nearby seeds do not collide on a first draw');
 });
 
+test('DLX 数不完时是一次抛错，不是一次静默丢盘（熔断分支有调用方，也就有用例）', () => {
+  // make.js says `if (verdict.capped) throw` — and until solveLevel() could forward a node budget,
+  // nothing in the tree could ever reach that branch: 破坏试验 K3 (delete the throw) stayed GREEN
+  // across all ten suites. maxNodes is now a documented makeLevel option, so the branch has a
+  // caller, and this case says which of the two failure shapes the generator is allowed to use:
+  // "could not prove" is an exception, "proved not unique" is a stats counter.
+  const thrown = [];
+  let made = null;
+  try {
+    made = makeLevel({ seed: 'cap-01', band: 'mid', maxAttempts: 40, maxNodes: 0 });
+  } catch (err) {
+    thrown.push(String(err.message));
+  }
+  eq(thrown.length, 1, `maxNodes: 0 must throw out of the uniqueness proof, got ${JSON.stringify({ thrown, made: made && made.ok })}`);
+  ok(/node cap/.test(thrown[0]), `and it must name the cap (${thrown[0]})`);
+  // The other shape, for contrast: a generous budget produces a level or a counted rejection,
+  // never a cap error.
+  const sane = makeLevel({ seed: 'cap-02', band: 'taster', maxAttempts: 40, maxNodes: 20000000 });
+  eq(sane.ok, true, 'the same call with the default budget still just makes a 上手匣');
+  ok(sane.stats.maxDlxNodes < 20000000, `and it walked ${sane.stats.maxDlxNodes} nodes, nowhere near the cap`);
+});
+
 process.exitCode = run();
