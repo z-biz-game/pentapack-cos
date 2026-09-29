@@ -157,6 +157,13 @@ push → 读 Actions 自己打印的行数（绿徽章不是证明）→ 对线�
   `rows:` 依次 16 → `balance --check: 15 cells, 0 breaches` → 20/15/12/23/27/11/17/15/8/10，
   合计 **174 行 / fail 0**；browser job `@boot 16 @play 20 @routes 15 @save 15 @pointer 20`、
   `=== console === (none)`、`chrome exited`、`=== ALL GREEN ===`。**与本机那一次逐字相同**。
+- 本次文档回填的 SHA `f29eec5` 也照同样的办法验，不看徽章：从 `actions/runs` 按 `head_sha` 取出两条
+  run，再逐条读 job 日志把 `rows:` 加起来 —— unit **174 / fail 0** 且 `balance --check: 15 cells, 0
+  breaches` 恰好出现 1 次，browser **86 行** 且日志含 `=== ALL GREEN ===`，两条 run 与两个 job 全
+  success，`CI_RC=0`。第一版这段断言红过一次，红在它自己：它把 Pages 那条 run 的名字写成 `Deploy`，
+  而实际是 `Deploy to GitHub Pages`，于是 `ok` 直接为假、连日志都没去读。改法是把"名字"放宽成
+  `startswith('Deploy')`，同时**收紧**它比的东西（job 条数必须 2、两个 job 的结论、行数求和必须等于
+  174/86、balance 行必须存在）—— 放宽的是匹配子的外部事实，收紧的才是判定。
 - 线上第四层（只有真站点能给，2026-09-30）：
   `BASE_URL=https://z-biz-game.github.io/pentapack-cos/ SKIP_UNIT=1 WEB_PORT=5199 CDP_PORT=9359 bash tools/verify.sh`
   → 86 行 / fail 0 / console `(none)` / chrome exited / `LIVE_RC=0`（`_tmp-penta-live-r15.log`）。
