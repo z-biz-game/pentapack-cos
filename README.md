@@ -210,10 +210,11 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 
 `rows` 是断言条数，不是"性质个数"；相加等于 174 由上表现算。
 
-**生成率台架** `node tools/balance.mjs --check`：**15 格 / 0 breach**（本轮 GATE_RC=0）。
+**生成率台架** `node tools/balance.mjs --check`：**15 格 / 0 breach**（本轮 GATE_RC=0，本机 0.59 s）。
 它断言的是纯整数：两条记账等式逐格成立、每一档在每个 bias 上都可达、
 平均测量深度随 k 严格右移、没有任何一格摸到 DLX 节点上限或推理帧上限、
 同一批种子重跑一遍直方图逐字相同。
+它现在是 CI unit job 的 `Generator yield` 一步 —— 见下面那张"哪条命令真的在 CI 里跑"。
 
 **公开锚点** `node tools/proof.mjs`：`anchors: 4 fail: 0`（PROOF_RC=0），上表那四行就是它的输出。
 
@@ -229,7 +230,21 @@ console: (none)      chrome exited      === ALL GREEN ===
 
 `@pointer` 是这里最贵的一段：它不看内部变量，只看面板和棋盘，把一条认证解答从头点到装完；
 `@save` 验的是真 `localStorage` 落盘（含"两次点击才清空"和脏字段退化）。
-两层合计 **260 行断言 / 0 失败**。CI 的 browser job 在 Linux runner 上跑同一个 `tools/verify.sh`。
+两层合计 **260 行断言 / 0 失败**。
+
+**哪条命令真的在 CI 里跑**（本轮查出来的缺口就在这张表里）：
+
+| 门禁 | unit job | browser job |
+| --- | --- | --- |
+| `node --check` 全树 / `tools/check.mjs` / 10 个套件 | 跑 | 跳过（`SKIP_UNIT=1` 跳过 verify 的整个 node 层） |
+| `tools/verify.sh` 的五个浏览器场景 + console + Chrome 退出 | 不跑 | 跑 |
+| `tools/balance.mjs --check` | **本轮之前哪里都不跑** —— 只在 `verify.sh` 的 node 层里，而 browser job 把那一层整段跳过。现已是 unit job 的 `Generator yield` 一步 | 不跑 |
+| `tools/proof.mjs` | 不单独跑（四个锚点的真穷举在 `anchor.test.mjs` 里，unit job 跑的是它） | 不跑 |
+
+`472d535` 那次 CI 自己打印的数字（Linux runner，日志原文，不是徽章）：unit job `rows:` 依次
+16 / 20 / 15 / 12 / 23 / 27 / 11 / 17 / 15 / 8 / 10 —— **合计 174 / fail 0**，与本机同一次跑逐字相同；
+browser job `=== ALL GREEN ===`、`@boot 16 @play 20 @routes 15 @save 15 @pointer 20`。
+两条 run（CI 与 Deploy）都在该 SHA 上 success。
 
 ---
 
@@ -250,7 +265,7 @@ console: (none)      chrome exited      === ALL GREEN ===
 | 随机匣由链接 seed 决定 | `library.test.mjs` + `rng.test.mjs` | 外部实现的哈希向量 + 重跑一致 | K14 红 |
 | 63 个姿态、D₄ 群律 | `pieces.test.mjs` | 代码表 = 手抄黄金 = 两份文档里印的那串 | K16 红（文档刀） |
 | 公开锚点表 | `proof.mjs` + `anchor.test.mjs` | 与文献数字逐个等值 | 4 锚点 fail 0 |
-| 每档在每个偏置上都生成得出来 | `tools/balance.mjs --check`（本轮新建） | 记账等式 + 可达性 + 方向性 + 可复现 | 15 格 0 breach，K18 红 |
+| 每档在每个偏置上都生成得出来 | `tools/balance.mjs --check`（本轮新建，且是 CI unit job 的一步） | 记账等式 + 可达性 + 方向性 + 可复现 | 15 格 0 breach，K18 红 |
 | 零依赖 / 分层不可越界 | `tools/check.mjs` | `package.json` 两个字段 + 全树 import/时钟/DOM 扫描 | 16 行 fail 0 |
 
 ---
@@ -335,7 +350,6 @@ npm run electron electron .                      # 桌面壳（本仓不装 elec
 ```
 
 `dependencies` 与 `devDependencies` 都是 `{}`，由 `tools/check.mjs` 断言 —— 这是文件清单，不是安装说明书。
-`balance --check` 已经挂在 `npm run verify` 的 node 层里，所以 CI 每次都会跑它。
 
 ---
 

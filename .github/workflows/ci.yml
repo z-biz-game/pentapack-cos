@@ -30,6 +30,12 @@ jobs:
         run: for f in js/*.js js/*/*.js server.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
       - name: Layering
         run: node tools/check.mjs
+      # The generator's yield is a probability: no single makeLevel() call can report it, so it
+      # needs many draws — which is what the browser job deliberately does not do (SKIP_UNIT=1
+      # skips the whole node layer, including this step). Without this line the promise "every
+      # band is reachable at every bias, and no draw grazes a cap" would exist only on one laptop.
+      - name: Generator yield
+        run: node tools/balance.mjs --check
       - name: Suites
         run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
 
