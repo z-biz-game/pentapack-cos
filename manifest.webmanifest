@@ -1,0 +1,39 @@
+{
+  "name": "五连块匣 Pentapack",
+  "short_name": "Pentapack",
+  "description": "每关「只有解」由精确覆盖 DLX 证明的五连块装箱。12 块、18 变体、构建期烤制 30 匣。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "scope": "./",
+  "start_url": "./index.html",
+  "id": "./index.html",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0e1013",
+  "theme_color": "#0e1013",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "assets/icons/icon-1024.png",
+      "type": "image/png",
+      "sizes": "1024x1024"
+    },
+    {
+      "src": "assets/icons/icon-maskable-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ]
+}

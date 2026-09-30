@@ -12,14 +12,16 @@
 //      suite.
 //   3. js/core/* is the pure layer: no DOM token anywhere in it, and every module in it loads
 //      under plain node (which is the same thing the game's own tests depend on).
-//   4. no image assets: the pieces are drawn from geometry, so a .png sneaking in means the
-//      claim "procedurally rendered" is false.
+//   4. the asset layer closes both ways: every image lives under assets/, is a readable PNG whose
+//      bytes and IHDR match assets/gen/manifest.json (so the art on disk is the art the generator
+//      writes), every path the code names exists, and nothing exists that no code names.
 //   5. the shipped data file is machine-generated, and it enters the app through exactly one
 //      door: js/core/library.js.
 //   6. nothing in the shipped layer is a ghost: every exported name is called or read by some
 //      piece of code other than its own declaration, so "exported and never used" fails the
 //      build instead of shipping as a feature.
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -105,7 +107,23 @@ const html = read('index.html');
 const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]).filter((u) => !u.startsWith('data:') && !u.startsWith('http'));
 const broken = refs.filter((r) => !existsSync(join(root, r)));
 rec('index.html references only files that exist', broken.length === 0, broken.join(', ') || refs.join(', '));
-rec('the page carries a title and a favicon-less icon', /<title>五连块匣/.test(html) && /rel="icon" href="data:,">/.test(html), '');
+// The head used to satisfy "has an icon" with `href="data:,"`, which is a real answer to a
+// question nobody should be asking: an empty icon means the tab shows a grey hole. Now the links
+// point at generated PNGs, and the checks below are only as strong as rules 4's byte inspection.
+rec('the head declares a title, real PNG icons, an apple-touch-icon, a manifest and an og card',
+  /<title>五连块匣/.test(html)
+  && /rel="icon"[^>]*href="assets\/icons\/icon-32\.png"/.test(html)
+  && /rel="apple-touch-icon" href="assets\/icons\/apple-touch-icon\.png"/.test(html)
+  && /rel="manifest" href="manifest\.webmanifest"/.test(html)
+  && /property="og:image" content="assets\/og-cover\.png"/.test(html),
+  String(html.match(/<link[^>]+>/g)));
+// Three layers can disagree about one colour: the meta the browser paints chrome with, the
+// manifest the installer paints its splash with, and the stylesheet that paints the page. This
+// reads the value out of the CSS variable rather than comparing it to a literal typed here.
+const bgVar = (read('css/game.css').match(/--bg:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+const metaTheme = (html.match(/name="theme-color" content="(#[0-9a-fA-F]{6})"/) || [])[1];
+rec('theme-color is the colour the page is actually painted with',
+  !!bgVar && !!metaTheme && metaTheme.toLowerCase() === bgVar.toLowerCase(), `meta=${metaTheme} css --bg=${bgVar}`);
 rec('the page is a module page (no bundler, no build step)', /<script type="module" src="js\/main.js">/.test(html), '');
 
 // --- 3. the pure layer ----------------------------------------------------
@@ -138,14 +156,97 @@ for (const f of coreFiles) {
 }
 rec('every js/core module loads under bare node', loadFails.length === 0 && loaded === coreFiles.length, loadFails.join(' | ') || `${loaded}/${coreFiles.length}`);
 
-// --- 4. no image assets ---------------------------------------------------
-// The asset inventory covers every shipped path including css/, which the first version of this
-// rule skipped: a `background: url(x.png)` in the stylesheet would have passed it. The reference
-// scan excludes this file, whose own source necessarily contains the patterns it looks for.
-const images = allFiles.filter((f) => /\.(png|jpe?g|svg|gif|webp|ico)$/i.test(f));
-const refScan = allFiles.filter((f) => f !== 'tools/check.mjs');
-const imgRefs = refScan.filter((f) => /<img|url\(.*\.(png|jpg|jpeg|svg|gif|webp)|new Image\(/i.test(read(f)));
-rec('there are no image assets and no code asks for one', images.length === 0 && imgRefs.length === 0, images.concat(imgRefs).join(', '));
+// --- 4. the asset layer ---------------------------------------------------
+// This rule used to read "there are no image assets and no code asks for one", argued from the
+// fact that the pieces are drawn from geometry. That half still holds — js/view.js paints every
+// pentomino from js/core/pieces.js and loads no sprite for a piece — but the page now carries a
+// real visual identity (nine icons, an og card, a felt texture, two particle sprites), so a gate
+// that only forbids files would simply be false. It was rewritten to check the opposite: that
+// each shipped image is a *readable* PNG, that its bytes are the ones its own generator wrote,
+// and that nothing is referenced without existing or existing without being referenced.
+//
+// The PNG signature check is what makes "no SVG in disguise" need no separate regex: the 8 bytes
+// 89 50 4E 47 0D 0A 1A 0A cannot begin an SVG, so a text file renamed .png fails right here.
+const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|ico|svg)$/i;
+const assetFiles = walk('assets').filter((f) => IMAGE_RE.test(f));
+const rootFiles = readdirSync(root, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+const stray = allFiles.filter((f) => IMAGE_RE.test(f)).concat(rootFiles.filter((f) => IMAGE_RE.test(f)));
+rec('every image asset lives under assets/', stray.length === 0, stray.join(', '));
+
+const dims = new Map();
+const unreadable = [];
+for (const f of assetFiles) {
+  const buf = readFileSync(join(root, f));
+  if (!buf.subarray(0, 8).equals(PNG_SIG)) {
+    unreadable.push(`${f}: signature ${buf.subarray(0, 8).toString('hex')}`);
+    continue;
+  }
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  if (!w || !h) unreadable.push(`${f}: IHDR ${w}x${h}`);
+  // A filename that promises a size is a promise this rule can hold: icon-192.png must *be* 192.
+  const named = f.match(/(\d+)\.png$/);
+  if (named && Number(named[1]) !== w) unreadable.push(`${f}: IHDR ${w}x${h} contradicts the name`);
+  if (buf.length < 400) unreadable.push(`${f}: ${buf.length} bytes is a placeholder, not art`);
+  dims.set(f, { w, h, sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
+}
+rec('every shipped image is a readable PNG whose IHDR matches its own filename',
+  unreadable.length === 0 && assetFiles.length > 0, unreadable.join(' | ') || `${assetFiles.length} files`);
+
+// The generator writes this manifest next to the art, so a hand-edited or truncated PNG drifting
+// away from `python3 assets/gen/gen_art.py` is a red build rather than a silent one.
+const artManifest = JSON.parse(read('assets/gen/manifest.json'));
+const drift = [];
+for (const f of assetFiles) {
+  const key = f.slice('assets/'.length).split(sep).join('/');
+  const exp = (artManifest.files || {})[key];
+  if (!exp) { drift.push(`${key}: not in assets/gen/manifest.json`); continue; }
+  const got = dims.get(f);
+  if (!got) continue;
+  if (got.sha256 !== exp.sha256) drift.push(`${key}: sha256 ${got.sha256.slice(0, 12)} != ${String(exp.sha256).slice(0, 12)}`);
+  else if (got.w !== exp.w || got.h !== exp.h) drift.push(`${key}: ${got.w}x${got.h} != manifest ${exp.w}x${exp.h}`);
+}
+const unlisted = [...(artManifest.files ? Object.keys(artManifest.files) : [])].filter((k) => !assetFiles.some((f) => f.slice('assets/'.length).split(sep).join('/') === k));
+rec('the committed bytes are the generator output, per assets/gen/manifest.json',
+  drift.length === 0 && unlisted.length === 0, drift.concat(unlisted.map((u) => `${u}: listed but absent`)).join(' | '));
+
+// What asks for what: index.html, the stylesheet, the service worker's precache list, the PWA
+// manifest and the two layers that build Image objects all name asset paths as string literals.
+const refHunt = ['index.html', 'css/game.css', 'sw.js', 'manifest.webmanifest', ...allFiles.filter((f) => f.startsWith(`js${sep}`))];
+const asked = new Map();
+for (const f of refHunt) {
+  for (const m of read(f).matchAll(/['"(]((?:\.\.\/)*assets\/[A-Za-z0-9._/-]+\.[a-z]{2,4})['")]/g)) {
+    const key = m[1].split('/').filter((s) => s && s !== '..').join('/');
+    if (!asked.has(key)) asked.set(key, f);
+  }
+}
+const absent = [...asked.keys()].filter((k) => !existsSync(join(root, k)));
+rec('every asset path the code names exists on disk', absent.length === 0, absent.map((k) => `${k} (${asked.get(k)})`).join(', '));
+const orphan = assetFiles
+  .map((f) => f.slice('assets/'.length).split(sep).join('/'))
+  .filter((k) => !k.startsWith('gen/') && !asked.has(`assets/${k}`));
+rec('no asset ships that nothing asks for', orphan.length === 0, orphan.join(', '));
+
+// The install manifest is the one a browser parses, so it gets checked field by field against the
+// files rather than against the prose that describes them.
+const pwa = JSON.parse(read('manifest.webmanifest'));
+const pwaBad = [];
+if (!/standalone/.test(pwa.display || '')) pwaBad.push(`display=${pwa.display}`);
+if (String(pwa.theme_color).toLowerCase() !== String(bgVar).toLowerCase()) pwaBad.push(`manifest theme_color=${pwa.theme_color} css --bg=${bgVar}`);
+for (const k of ['name', 'short_name', 'description', 'start_url', 'theme_color', 'background_color']) {
+  if (!pwa[k]) pwaBad.push(`${k} missing`);
+}
+for (const ic of pwa.icons || []) {
+  const rel = String(ic.src).replace(/^\.\//, '');
+  const info = dims.get(rel);
+  if (!info) pwaBad.push(`${ic.src}: absent or unreadable`);
+  else if (ic.sizes !== `${info.w}x${info.h}`) pwaBad.push(`${ic.src}: sizes=${ic.sizes}, IHDR=${info.w}x${info.h}`);
+  else if (ic.type !== 'image/png') pwaBad.push(`${ic.src}: type=${ic.type}`);
+}
+rec('manifest.webmanifest declares a real installable app, with icons that match their bytes',
+  pwaBad.length === 0 && (pwa.icons || []).length >= 2 && (pwa.icons || []).some((i) => i.purpose === 'maskable'),
+  pwaBad.join(' | ') || `${(pwa.icons || []).length} icons`);
 
 // --- 5. the generated data file ------------------------------------------
 const data = read('js/data/lots.js');

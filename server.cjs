@@ -14,6 +14,8 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  // Chrome ignores a manifest served as octet-stream, so the PWA install prompt never appears.
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 function createServer(root = __dirname) {

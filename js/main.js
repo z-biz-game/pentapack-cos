@@ -20,6 +20,7 @@ import { todayKey } from './core/rng.js';
 import { validateLevel, renderMask, samePlacements, placementMask, validatePlacements } from './core/board.js';
 import { TOTAL_VARIANTS, FULL_SET, VARIANTS, variantCells, variantCount, NAMES, CELLS, VARIANT_COUNT } from './core/pieces.js';
 import { createView, PIECE_COLOURS } from './view.js';
+import { createAudio } from './audio.js';
 
 const el = {
   canvas: document.getElementById('lot'),
@@ -44,6 +45,15 @@ const el = {
   next: document.getElementById('next'),
   wipe: document.getElementById('wipe'),
   toast: document.getElementById('toast'),
+  help: document.getElementById('help'),
+  pause: document.getElementById('pause'),
+  mute: document.getElementById('mute'),
+  fullscreen: document.getElementById('fullscreen'),
+  veil: document.getElementById('veil'),
+  resume: document.getElementById('resume'),
+  tutorial: document.getElementById('tutorial'),
+  start: document.getElementById('start'),
+  skipTut: document.getElementById('skip-tut'),
 };
 
 const app = {
@@ -53,10 +63,9 @@ const app = {
   game: null,
   index: 0,
   hints: 0,
-  last: -1, // the piece the pointer touched last, which `f` flips
-  t0: 0,
+  last: -1, // the piece the pointer touched last, which `v` flips
   seconds: 0,
-  timer: 0,
+  paused: false,
   saved: store.load(),
 };
 
@@ -72,21 +81,24 @@ function go(hash) {
   else location.hash = target;
 }
 
-function stopTimer() {
-  if (app.timer) clearInterval(app.timer);
-  app.timer = 0;
-}
-
 // The clock belongs to this layer, and there is exactly one place that reads it for a date.
 // js/core/rng.js:todayKey refuses to default its argument precisely so that this line is the
 // only `new Date` in the whole game: a test can then ask "which lot is 2026-03-01's daily" by
 // passing a Date, instead of monkey-patching a global.
 const today = () => todayKey(new Date());
 
+// The elapsed time is *accumulated from the render loop's dt* rather than read off Date.now at
+// an interval: a pause has to stop the number, and a background tab must not bank an hour it
+// never played. `view.onFrame` is the only caller, and it does not call while paused.
+let elapsedMs = 0;
+let shownSeconds = -1;
+
 function tickTime() {
-  if (!app.game || app.game.done || !app.t0) return;
-  app.seconds = Math.round((Date.now() - app.t0) / 1000);
-  const node = el.readout.querySelector('[data-field=time] dd');
+  if (!app.game || app.game.done) return;
+  app.seconds = Math.floor(elapsedMs / 1000);
+  if (app.seconds === shownSeconds) return;
+  shownSeconds = app.seconds;
+  const node = el.readout.querySelector('[data-field="用时"] dd');
   if (node) node.textContent = `${app.seconds}s`;
 }
 
@@ -97,10 +109,10 @@ function setLot(lot, label) {
   app.index = campaign().findIndex((l) => l.id === lot.id);
   app.game = createGame(lot);
   app.hints = 0;
-  app.t0 = Date.now();
+  elapsedMs = 0;
+  shownSeconds = -1;
   app.seconds = 0;
-  stopTimer();
-  app.timer = setInterval(tickTime, 1000);
+  setPaused(false);
   el.curtain.hidden = true;
   view.setGame(app.game);
   render();
@@ -258,8 +270,10 @@ function commitDrop(piece, variant, x, y) {
   const res = place(app.game, piece, variant, x, y);
   if (res.ok && res.moved) {
     view.clearHint();
+    audio.place();
     afterMove();
   } else if (!res.ok && BOUNCE[res.code]) {
+    audio.refuse();
     say(`<span class="no">${BOUNCE[res.code]}</span> 这一步没有算进操作数。`);
   }
   render();
@@ -268,7 +282,10 @@ function commitDrop(piece, variant, x, y) {
 
 function commitTake(piece) {
   const res = takeBack(app.game, piece);
-  if (res.ok) afterMove();
+  if (res.ok) {
+    audio.take();
+    afterMove();
+  }
   render();
   return res;
 }
@@ -277,7 +294,10 @@ function commitRotate(piece) {
   app.last = piece;
   const res = rotate(app.game, piece);
   if (!res.ok && res.code === 'blocked') say('旋转后会压住别的块，所以它没动。旋转不算一步。');
-  else if (res.ok) say('旋了一下：不算一步。');
+  else if (res.ok) {
+    audio.turn();
+    say('旋了一下：不算一步。');
+  }
   render();
   return res;
 }
@@ -286,7 +306,10 @@ function commitFlip(piece) {
   app.last = piece;
   const res = flip(app.game, piece);
   if (!res.ok && res.code === 'blocked') say('镜像后会压住别的块，所以它没动。翻面不算一步。');
-  else if (res.ok && res.code !== 'noop') say('翻了一面：不算一步。');
+  else if (res.ok && res.code !== 'noop') {
+    audio.turn();
+    say('翻了一面：不算一步。');
+  }
   render();
   return res;
 }
@@ -299,7 +322,9 @@ function afterMove() {
     return;
   }
   if (!g.done) return;
-  app.seconds = Math.max(app.seconds, Math.round((Date.now() - app.t0) / 1000));
+  app.seconds = Math.max(app.seconds, Math.floor(elapsedMs / 1000));
+  view.celebrate();
+  audio.win(grade(g).stars - 1);
   const rec = store.record(g.id, { moves: g.moves, seconds: app.seconds, date: today() });
   const idx = campaign().findIndex((l) => l.id === g.id);
   if (idx >= 0) store.unlockTo(Math.max(app.saved.unlock || 0, idx + 1));
@@ -323,7 +348,130 @@ const view = createView(el.canvas, {
     /* the message was already put on the hint line by commitDrop */
   },
   canDrop: (piece, variant, x, y) => (app.game ? fits(app.game, piece, variant, x, y) : false),
+  // The one clock the panel prints. dt arrives in seconds from the render loop and this hook is
+  // not called while the view is paused, which is what makes 暂停 stop the number.
+  onFrame: (dt) => {
+    elapsedMs += dt * 1000;
+    tickTime();
+  },
 });
+
+const audio = createAudio();
+
+// --------------------------------------------------------------------------- the system HUD
+// Four controls that are easy to fake, so each one's state is read back from the thing it acts
+// on: paused is reported by the view (which is what refuses pointers and freezes particles),
+// muted is reported by the audio layer (which counts allocated nodes), fullscreen is reported by
+// document.fullscreenElement rather than by the click that asked for it.
+
+function setPaused(next) {
+  const want = !!next;
+  if (want !== app.paused) {
+    app.paused = want;
+    view.setPaused(want);
+    el.veil.hidden = !want;
+    if (want) audio.halt();
+    else audio.release();
+  }
+  el.pause.setAttribute('aria-pressed', want ? 'true' : 'false');
+  el.pause.textContent = want ? '▶' : '⏸';
+  el.pause.setAttribute('aria-label', want ? '继续' : '暂停');
+  return want;
+}
+
+function paintMuted(want) {
+  el.mute.setAttribute('aria-pressed', want ? 'true' : 'false');
+  el.mute.textContent = want ? '🔇' : '🔊';
+  el.mute.setAttribute('aria-label', want ? '取消静音' : '静音');
+}
+
+// persist=false is the boot path: restoring a saved preference must not rewrite the save file.
+function setMuted(v, persist = true) {
+  const want = audio.setMuted(v);
+  paintMuted(want);
+  if (persist) store.setSetting('muted', want);
+  return want;
+}
+
+function showTutorial(v) {
+  const want = !!v;
+  el.tutorial.hidden = !want;
+  el.help.setAttribute('aria-pressed', want ? 'true' : 'false');
+  return want;
+}
+
+function closeTutorial() {
+  if (!el.tutorial.hidden) {
+    el.tutorial.hidden = true;
+    el.help.setAttribute('aria-pressed', 'false');
+    store.setSetting('tutorialSeen', true);
+  }
+}
+
+// The browser may refuse (an iframe without allow="fullscreen") or may exit on its own, so the
+// button's own label is painted from the document's state, not from the request's outcome.
+function fullscreenEl() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function paintFullscreen() {
+  const on = !!fullscreenEl();
+  el.fullscreen.setAttribute('aria-pressed', on ? 'true' : 'false');
+  el.fullscreen.textContent = on ? '🗗' : '⛶';
+  el.fullscreen.setAttribute('aria-label', on ? '退出全屏' : '全屏');
+}
+
+function toggleFullscreen() {
+  const node = fullscreenEl();
+  const exit = node ? (document.exitFullscreen || document.webkitExitFullscreen) : null;
+  if (node && exit) {
+    Promise.resolve(exit.call(document)).catch(() => { /* refused: the label is repainted anyway */ });
+  } else if (!node) {
+    const target = document.documentElement;
+    const request = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!request) {
+      toast('这个浏览器不支持全屏');
+      return;
+    }
+    Promise.resolve(request.call(target)).catch(() => toast('全屏被拒绝（内嵌页面需要 allow="fullscreen"）'));
+  }
+}
+
+el.pause.addEventListener('click', () => setPaused(!app.paused));
+el.resume.addEventListener('click', () => setPaused(false));
+el.mute.addEventListener('click', () => setMuted(!audio.isMuted()));
+el.help.addEventListener('click', () => showTutorial(el.tutorial.hidden));
+el.fullscreen.addEventListener('click', toggleFullscreen);
+el.start.addEventListener('click', closeTutorial);
+el.skipTut.addEventListener('click', closeTutorial);
+document.addEventListener('fullscreenchange', paintFullscreen);
+document.addEventListener('webkitfullscreenchange', paintFullscreen);
+// A tab that goes to the background is not a player who stepped away: the clock should not keep
+// banking seconds nobody watched, and a held envelope should not run behind an unseen page.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    audio.halt();
+    if (!app.paused) setPaused(true);
+  }
+});
+
+// --------------------------------------------------------------------------- motion preference
+// The OS setting is the authority and the page follows it live; js/view.js keeps the pixel-level
+// branch (no particles, no easing), this layer keeps the announcement so the change is visible.
+const reduceQuery = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)')
+  : null;
+
+function paintReduced() {
+  const on = !!(reduceQuery && reduceQuery.matches);
+  view.setReduced(on);
+  return on;
+}
+
+if (reduceQuery) {
+  if (typeof reduceQuery.addEventListener === 'function') reduceQuery.addEventListener('change', paintReduced);
+  else if (typeof reduceQuery.addListener === 'function') reduceQuery.addListener(paintReduced);
+}
 
 // --------------------------------------------------------------------------- controls
 
@@ -373,7 +521,8 @@ el.hint.addEventListener('click', () => {
 function restart() {
   if (!app.game) return;
   reset(app.game);
-  app.t0 = Date.now();
+  elapsedMs = 0;
+  shownSeconds = -1;
   app.seconds = 0;
   app.hints = 0;
   el.curtain.hidden = true;
@@ -432,27 +581,53 @@ el.wipe.addEventListener('click', () => {
   }
   app.saved = store.load();
   restart();
+  // The wipe took the settings with it, so the engine goes back to audible and the button has to
+  // follow in the same tick — a 🔇 that still plays is a control that lies.
+  setMuted(!!app.saved.settings.muted, false);
   render();
   toast('已清空');
 });
 
 window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => view.measure());
-// Keyboard shortcuts. `f` flips the piece last touched, which is the only sensible meaning of
-// "the piece under the keyboard" for a game whose pointer is a mouse or a finger.
+// Keyboard shortcuts. `v` flips the piece last touched — the only sensible meaning of "the piece
+// under the keyboard" for a game whose pointer is a mouse or a finger — because `f` is what every
+// other media page on this device already means: fullscreen.
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = ev.key.toLowerCase();
-  if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
+  const onControl = ev.target && typeof ev.target.closest === 'function'
+    && ev.target.closest('button,[role="button"],a[href],input,select,textarea');
+  if (onControl && (k === ' ' || k === 'enter')) return;
+  if (k === 'escape') {
+    if (!el.tutorial.hidden) closeTutorial();
+    else if (!el.curtain.hidden) el.curtain.hidden = true;
+  } else if (k === ' ' || k === 'enter') {
+    ev.preventDefault();
+    if (!el.tutorial.hidden) closeTutorial();
+    else setPaused(!app.paused);
+  } else if (k === 'p') setPaused(!app.paused);
   else if (k === 'u') el.undo.click();
   else if (k === 'h') el.hint.click();
   else if (k === 'r') restart();
-  else if (k === 'f' && app.last >= 0 && app.game) commitFlip(app.last);
+  else if (k === 'm') setMuted(!audio.isMuted());
+  else if (k === 'f') toggleFullscreen();
+  else if (k === 'v' && app.last >= 0 && app.game) commitFlip(app.last);
+  else if (k === '?' || k === '/') showTutorial(el.tutorial.hidden);
 });
 
 // --------------------------------------------------------------------------- boot
 
 apply();
+// Three preferences the page has to *follow*, not merely advertise: the OS motion setting, the
+// saved mute state (without rewriting the save file on the way in), and whatever fullscreen the
+// host is already in — the button is painted from the document's state in all three cases.
+paintReduced();
+setMuted(!!store.load().settings.muted, false);
+paintFullscreen();
+// The how-to-play card opens once per device. It lives in the side panel and pauses nothing, so
+// the canvas underneath stays hittable — @pointer drives real mouse events into it.
+showTutorial(!store.load().settings.tutorialSeen);
 view.start();
 
 // The test surface. Everything forwards to the functions above — the same code a click runs.
@@ -477,6 +652,18 @@ window.pentapack = {
       done: !!(g && g.done),
       anomaly: g && g.anomaly,
       curtain: !el.curtain.hidden,
+      // The HUD, read from the layers that own it: `view.fx().paused` is what actually gates the
+      // pointer, `audio.state().muted` is what refuses to allocate a node, `fullscreen` is the
+      // document's own answer. A button that only repaints itself would fail all three.
+      paused: app.paused,
+      viewPaused: view.fx().paused,
+      veil: !el.veil.hidden,
+      tutorial: !el.tutorial.hidden,
+      fullscreen: !!fullscreenEl(),
+      muted: audio.isMuted(),
+      fx: view.fx(),
+      audio: audio.state(),
+      reduced: view.fx().reduced,
       index: app.index,
       unlocked: store.load().unlock,
       solved: campaign().filter((l) => store.load().done[l.id]).length,
@@ -647,6 +834,34 @@ window.pentapack = {
   // has to ask for the repaint a real unlock would have caused.
   render() {
     render();
+  },
+  // The HUD, forwarded through the very functions a click runs. A suite that only checked
+  // app.paused would pass a button that repaints itself; these report what the owning layer says.
+  pause(v) {
+    return setPaused(v === undefined ? !app.paused : !!v);
+  },
+  mute(v) {
+    return setMuted(v === undefined ? !audio.isMuted() : !!v);
+  },
+  help(show) {
+    if (show === false) closeTutorial();
+    else showTutorial(true);
+    return !el.tutorial.hidden;
+  },
+  fullscreen() {
+    toggleFullscreen();
+    return !!fullscreenEl();
+  },
+  reduced(v) {
+    if (v === undefined) return paintReduced();
+    view.setReduced(!!v);
+    return view.fx().reduced;
+  },
+  fx() {
+    return view.fx();
+  },
+  get audioState() {
+    return audio.state();
   },
   view,
 };
