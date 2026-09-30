@@ -693,13 +693,51 @@ export function createView(canvas, hooks = {}) {
     raf = requestAnimationFrame(tick);
   }
 
-  canvas.addEventListener('pointerdown', down);
-  canvas.addEventListener('pointermove', move);
-  canvas.addEventListener('pointerup', up);
-  canvas.addEventListener('pointercancel', () => {
+  // Pointer Events is the preferred path, but it is not universal: an older webview or iOS
+  // Safari before 13 has no window.PointerEvent, and binding only pointerdown there leaves a
+  // board that ignores every finger. The fallback feeds the *same* three handlers, so the drag
+  // rules cannot drift between the two paths.
+  const hasPointer = typeof window === 'object' && typeof window.PointerEvent !== 'undefined';
+
+  // A touch event carries its coordinates on changedTouches, not on the event itself.
+  function asPoint(ev) {
+    const t = ev.changedTouches ? ev.changedTouches[0] : ev;
+    if (!t) return null;
+    return {
+      clientX: t.clientX,
+      clientY: t.clientY,
+      pointerId: ev.pointerId,
+      button: ev.button === undefined ? 0 : ev.button,
+      preventDefault: () => ev.preventDefault(),
+    };
+  }
+
+  function touchOnly(fn) {
+    return (ev) => {
+      const p = asPoint(ev);
+      if (p) fn(p);
+    };
+  }
+
+  function cancelDrag() {
     if (drag) flyHome(drag.piece, drag.variant, ghostAnchor(drag.piece, drag.variant, drag), drag.origin.onBoard);
     endDrag();
-  });
+  }
+
+  if (hasPointer) {
+    canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', cancelDrag);
+  } else {
+    canvas.addEventListener('mousedown', down);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    canvas.addEventListener('touchstart', touchOnly(down), { passive: false });
+    canvas.addEventListener('touchmove', touchOnly(move), { passive: false });
+    canvas.addEventListener('touchend', touchOnly(up), { passive: false });
+    canvas.addEventListener('touchcancel', cancelDrag);
+  }
   canvas.addEventListener('dblclick', dbl);
   canvas.addEventListener('contextmenu', onContext);
 
@@ -749,6 +787,17 @@ export function createView(canvas, hooks = {}) {
         clock,
         seconds: Math.floor(clock),
         particles: parts.length,
+        // The count alone cannot convict: a field that is alive but frozen and one that is
+        // integrating correctly report the same number. So the harness gets the sums too —
+        // position and velocity, folded over the live particles.
+        sumX: parts.reduce((a, p) => a + p.x, 0),
+        sumY: parts.reduce((a, p) => a + p.y, 0),
+        sumVX: parts.reduce((a, p) => a + p.vx, 0),
+        sumVY: parts.reduce((a, p) => a + p.vy, 0),
+        sumT: parts.reduce((a, p) => a + p.t, 0),
+        hintT: hint ? hint.t : 0,
+        flashT: flash ? flash.t : 0,
+        animT: anim ? anim.t : 0,
         bursts,
         paused,
         reduced,
@@ -785,6 +834,16 @@ export function createView(canvas, hooks = {}) {
     },
     clearHint() {
       hint = null;
+      draw();
+    },
+    // A restart empties the board, so it must empty everything the board was wearing: the
+    // lingering particle field, the bounce in flight, the refusal flash, the hint outline.
+    clearFx() {
+      parts = [];
+      anim = null;
+      flash = null;
+      hint = null;
+      endDrag();
       draw();
     },
 

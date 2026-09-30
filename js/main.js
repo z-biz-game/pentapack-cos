@@ -526,7 +526,7 @@ function restart() {
   app.seconds = 0;
   app.hints = 0;
   el.curtain.hidden = true;
-  view.clearHint();
+  view.clearFx();
   say('倒回来了：待置块回到左边，操作数归零。');
   render();
 }
