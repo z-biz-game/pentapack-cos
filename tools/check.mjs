@@ -14,7 +14,9 @@
 //      under plain node (which is the same thing the game's own tests depend on).
 //   4. the asset layer closes both ways: every image lives under assets/, is a readable PNG whose
 //      bytes and IHDR match assets/gen/manifest.json (so the art on disk is the art the generator
-//      writes), every path the code names exists, and nothing exists that no code names.
+//      writes) *and* has its pixels counted on their own, so a generator that stopped drawing is
+//      caught without touching the manifest; every path the code names exists, and nothing exists
+//      that no code names.
 //   5. the shipped data file is machine-generated, and it enters the app through exactly one
 //      door: js/core/library.js.
 //   6. nothing in the shipped layer is a ghost: every exported name is called or read by some
@@ -193,6 +195,71 @@ for (const f of assetFiles) {
 }
 rec('every shipped image is a readable PNG whose IHDR matches its own filename',
   unreadable.length === 0 && assetFiles.length > 0, unreadable.join(' | ') || `${assetFiles.length} files`);
+
+// Byte hashes prove the bytes are what the generator wrote; they do not prove the generator drew
+// anything. Repoint it at a flat fill, re-run it, and every rule above stays green while the game
+// ships a blank texture. So the pixels get counted on their own, with no reference to
+// assets/gen/manifest.json: inflate + undo the row filters + tally distinct samples.
+const { inflateSync } = await import('node:zlib');
+function pixelPalette(file) {
+  const buf = readFileSync(join(root, file));
+  let pos = 8;
+  let w = 0; let h = 0; let ctype = 6; const idat = [];
+  while (pos + 8 <= buf.length) {
+    const len = buf.readUInt32BE(pos);
+    const type = buf.toString('ascii', pos + 4, pos + 8);
+    const body = buf.subarray(pos + 8, pos + 8 + len);
+    if (type === 'IHDR') { w = body.readUInt32BE(0); h = body.readUInt32BE(4); ctype = body[9]; }
+    else if (type === 'IDAT') idat.push(body);
+    else if (type === 'IEND') break;
+    pos += 12 + len;
+  }
+  const ch = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[ctype] || 4;
+  const stride = w * ch;
+  const raw = inflateSync(Buffer.concat(idat));
+  const prev = Buffer.alloc(stride);
+  const colours = new Set();
+  for (let y = 0; y < h; y++) {
+    const filter = raw[y * (stride + 1)];
+    const line = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    const bpp = ch; // 8-bit channels, so one pixel is one filter unit
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? line[i - bpp] : 0;
+      const b = prev[i];
+      const c = i >= bpp ? prev[i - bpp] : 0;
+      if (filter === 1) line[i] = (line[i] + a) & 255;
+      else if (filter === 2) line[i] = (line[i] + b) & 255;
+      else if (filter === 3) line[i] = (line[i] + ((a + b) >> 1)) & 255;
+      else if (filter === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a); const pb = Math.abs(p - b); const pc = Math.abs(p - c);
+        const pr = pa <= pb && pa <= pc ? a : (pb <= pc ? b : c);
+        line[i] = (line[i] + pr) & 255;
+      }
+    }
+    // Sample, don't tally: 1200x630 has 756k pixels and a flat image shows up in the first row.
+    for (let x = 0; x < w; x += 3) {
+      let key = 0;
+      for (let c = 0; c < Math.min(ch, 3); c++) key = key * 256 + line[x * ch + c];
+      colours.add(key);
+    }
+    line.copy(prev);
+  }
+  return colours.size;
+}
+const thin = [];
+const palettes = [];
+for (const f of assetFiles) {
+  let n = 0;
+  try { n = pixelPalette(f); } catch (err) { thin.push(`${f}: pixels undecodable (${err.message})`); continue; }
+  palettes.push(`${f.split('/').pop()}=${n}`);
+  // 8 is not an aesthetic floor, it is a gap that no real asset sits near: the sparsest one here
+  // is the felt weave at 23 sampled colours (the 16px favicon measures 53), while a flat fill
+  // measures exactly 1.
+  if (n < 8) thin.push(`${f}: only ${n} distinct colours — a placeholder, not art`);
+}
+rec('every shipped image has real pixel content (>=8 distinct colours, measured)',
+  thin.length === 0, thin.join(' | ') || palettes.join(' '));
 
 // The generator writes this manifest next to the art, so a hand-edited or truncated PNG drifting
 // away from `python3 assets/gen/gen_art.py` is a red build rather than a silent one.
