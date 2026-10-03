@@ -13,19 +13,25 @@ tools/      烘焙、门禁、真事件台架
 test/       10 个 node suite，跑在裸 node 上
 ```
 
-四条被 `tools/check.mjs` 机器化了的不变量（16 行断言，全绿）：
+四条被 `tools/check.mjs` 机器化了的不变量（现跑 23 行断言，全绿 —— 除了这四条，它还有两条：
+`js/data/*` 只从 `library.js` 这一个门进、导出的名字不许没人用）：
 
 1. **`js/core/*` 里没有 DOM 字样**，也没有 `window` —— 除了存储层，而它只在 `try/catch` 后面提。
    这条是"同一份规则既能在 node 里被断言、又能在浏览器里被真事件驱动"的前提。
 2. **`js/core/*` 里没有时钟、没有 `Math.random`**。随机只来自 `rng.js` 的注入种子；
    `todayKey(date)` **拒绝**默认它的参数（`test/rng.test.mjs` 钉住），所以"今天"必须由调用方读表进来。
 3. **零依赖**：`dependencies` 和 `devDependencies` 都是 `{}`，`tools/` 只碰 `node:` 内置模块。
-4. **没有图片资产，也没有代码要图片**：十二块的形状就是数据，界面是 canvas 画的。
+4. **图片必须两头闭合**：代码点名的每一个资产路径都得在磁盘上，磁盘上的每一个资产也得有代码点名它。
+   十二块的形状就是数据，玩法不向任何精灵图伸手 —— `js/view.js` 只要三张"材质"位图（毛毡、两粒粉尘）。
+   每张 PNG 由 `assets/gen/gen_art.py` 生成，闸读它的 IHDR、按 sha256 对回生成器清单，
+   **再把像素自己数一遍**：少于八种颜色就是占位图，红。
 
 第 2 条不是洁癖。每日匣的链接可以不带日期（`#/daily`），这时"今天那一关"必须仍然成立，
-而唯一读时钟的地方是 `js/main.js:84 const today = () => todayKey(new Date())`，
+而**决定"是哪一关"的那次读表只有一处**：`js/main.js:88 const today = () => todayKey(new Date())`，
 它把 key 注入 `resolveRoute(hash, today())`（`js/core/library.js:resolveRoute`）。
-规则层自己伸手看表的话，同一链接在两次渲染里会给出两关，而 node suite 永远不会发现这件事。
+外壳另外还读时钟（`js/main.js:575` 给"清空要按两次"计时、`js/main.js:787` 量一次生成的毫秒），
+但那两处都在判定之外，所以规则层自己伸手看表仍然是错的：同一链接在两次渲染里会给出两关，
+而 node suite 永远不会发现这件事。
 
 ## 2. 规则层
 
@@ -51,7 +57,7 @@ test/       10 个 node suite，跑在裸 node 上
 - `overlap`：压住别的块 —— 这条由 `game.js:105` 判，因为只有它知道别人。
 
 三个码在 `game.js:91` 的 `BOUNCE` 一处翻译成中文，视图照抄，提示照抄，
-`@pointer` 断言照抄。拒绝的落子**不计步**，块弹回原处（`BOUNCE_MS = 200` 的回位动画）。
+`@pointer` 断言照抄。拒绝的落子**不计步**，块弹回原处（`view.js:32` 的 `BOUNCE_S = 0.2`，即 200 ms 的回位动画）。
 
 ### 2.3 精确覆盖：DLX 与"解数 = 1"
 
@@ -61,16 +67,20 @@ test/       10 个 node suite，跑在裸 node 上
 这份实现对着公开数字校过（`node tools/proof.mjs`，本机实测）：
 
 ```
-3x20  orbits     2 (published     2) | raw     8 = orbits x 4 | nodes    34783 | 147ms
-4x15  orbits   368 (published   368) | raw  1472 = orbits x 4 | nodes   922440 | 3896ms
-5x12  orbits  1010 (published  1010) | raw  4040 = orbits x 4 | nodes  2507589 | 10840ms
-6x10  orbits  2339 (published  2339) | raw  9356 = orbits x 4 | nodes  4050281 | 18310ms
+3x20   orbits     2 (published     2) | raw     8 = orbits x 4 | recount     8 | digest clean | nodes    34783 | limit=2 -> 2 in    218 nodes (early) | 92ms
+4x15   orbits   368 (published   368) | raw  1472 = orbits x 4 | recount  1472 | digest clean | nodes   922440 | limit=2 -> 2 in    119 nodes (early) | 2244ms
+5x12   orbits  1010 (published  1010) | raw  4040 = orbits x 4 | recount  4040 | digest clean | nodes  2507589 | limit=2 -> 2 in   1016 nodes (early) | 5772ms
+6x10   orbits  2339 (published  2339) | raw  9356 = orbits x 4 | recount  9356 | digest clean | nodes  4050281 | limit=2 -> 2 in   3758 nodes (early) | 9936ms
 ```
 
 `raw = orbits × 4` 不是巧合而是被断言的关系：矩形自身的对称（旋转与镜像）把每条本质不同的铺法
 展开成 4 条固定铺法。这四行由 `test/anchor.test.mjs`（共 20 行，本机一轮跑 9.4 s——读数，不进断言）
-在 CI 里也跑，跑的是真搜索；`node tools/proof.mjs` 打印的就是上面那张表（本轮四行逐行 92 / 2141 /
-6159 / 9783 ms，同样是读数）。
+在 CI 里也跑，跑的是真搜索；`node tools/proof.mjs` 打印的就是上面那张表（本轮四行逐行 92 / 2244 /
+5772 / 9936 ms，同样是读数）。`recount` 那一列是把同一棵树**再走一遍**（另一次 `searchCount` 调用）并要求
+数到同一个数，`digest clean` 是搜索结束后矩阵的链结构摘要与开跑前逐字节相同 —— cover/uncover 漏一次，
+红的就是这一格，而那正是"节点数"这句话的地基。`test/anchor.test.mjs` 不调用这里的 `proveRect`：
+它自己走一遍树、自己断言 digest（那条断言的措辞是 "cover and uncover are inverses over N column
+selections"），所以 CI 里不付双份代价，第二遍只在人手动跑这个文件时才发生。
 另外 `countSolutions(spec, 2)` 的提前停止被单独测过：只要两条解就收工，
 limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
@@ -125,8 +135,10 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 
 `RULES` 与 `RULE_SET_VERSION = 1` 是导出的，界面引用它，测试钉住它。
 诚实条款（`logic.js:13-16`）说清了这个数的归属：它属于这对规则，不属于谜题本身；
-规则一变，全屋的数都要重测，所以 `js/data/lots.js` 必须重新烘焙 —— 那句
-"如果你改了规则，包里的数字就不再是关于任何东西的陈述"就写在那张表的文件头。
+规则一变，全屋的数都要重测，所以 `js/data/lots.js` 必须重新烘焙 —— 那张表的文件头自己就带着这句话
+（`js/data/lots.js:8-9`，逐字抄、不节选，节选会把"哪一半有人背书"抄丢）：
+`Depth belongs to the rule pair, not to the puzzle; if the rules change, re-bake, because every number below is a statement about those rules.`
+（译文：深度属于那一对规则，不属于谜题本身；如果你改了规则，就得重烤，因为下面每一个数字都是关于那两条规则的陈述。）
 
 ## 5. 关卡包与路由
 
@@ -200,7 +212,7 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 ## 9. 更正记录：一开始错在哪 → 现在为什么对
 
 产品缺陷 5 处（1-5），测试自身写错 8 处（6-12、14），空断言 1 处（13），缺 suite 1 处（15），
-台架与发布脚本缺陷 3 处（16-18）。每一条都有实测。
+台架与发布脚本缺陷 3 处（16-18），文档与注释说谎 2 处（19-20）。每一条都有实测。
 
 | # | 现象 | 定性 | 现在的依据 |
 | --- | --- | --- | --- |
@@ -222,12 +234,17 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 | 16 | 一次一次性探针留下 9357 上的 Chrome 与 5197 上的服务，之后的门禁报 20/20 全过 —— 它驱动的是自己没启动的那个浏览器 | 台架缺陷 → 假绿 | `tools/verify.sh` 开跑前对两个端口各做一次 `net.connect`，有人在听就 `exit 6` 并打印持有者；收尾必须看到 Chrome 真退出才写 `ALL GREEN`（§8） |
 | 17 | 本机 `=== ALL GREEN ===`，CI 的 browser job 却在第一行就废：`mktemp: too few X's in template 'pentapack'`，于是 `--user-data-dir=` 是空的，30 s 后只报 "devtools never bound on :9357" | 台架缺陷（平台差异） | macOS 的 `mktemp -t` 把参数当**前缀**，GNU 把它当**模板**且模板必须以 X 收尾。改成 `mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX"`（两边都吃，profile 仍带车道名），再加 exit 7：目录没建出来就当场退出，不让下一处失败顶着一个错误结论 |
 | 18 | 建仓 API 回 201，org 上的 About 却是 `u4e94u8fdeu5323…` | 发布脚本缺陷 | curl 的 config 里 `data = <内联值>` 会做反斜杠转义：`json.dumps` 把中文写成 `\u4e94`，curl 再把 `\` 吃掉，GitHub 收到的就是字面 `u4e94`。改成 `data = "@file"`（curl 原样读文件字节），并对本仓 `PATCH` 修回正确描述 |
+| 19 | 上游那一个 PWA commit 给 `tools/check.mjs` 加了 7 行断言（资产层从"禁止图片"改成"两头闭合 + 数像素"），README/DESIGN 一字未动：`16 行`、`node 层 174`、`两层合计 260`、`js/main.js:84`、`js/main.js:175-181`、`server.cjs:48,59`、`BOUNCE_MS = 200`、`没有图片资产`、`不做音效与图片`、`唯一读时钟的地方` —— 十处全是抄写，没有一条命令读过它们 | 文档漂移（**产品是对的，散文是错的**） | 本轮补 `tools/doctest.mjs`：15 组、每项都拿代码或现跑重算，把这十处逐个改到现值。它第一跑就报 37 红：16 处是文档说谎，6 处是本闸自己写错（同名场景被数了两遍、把译文当原文、围栏被当路径、`num()` 括号优先级、needle 太脆），6 处是尚未接线，9 处是本闸自己的钉值占位 |
+| 20 | `tools/proof.mjs` 的注释写着 "test/anchor.test.mjs passes recount:false and asserts the digest" —— anchor 根本不调用 `proveRect`（它自己走树、自己断言 digest）；DESIGN §4 又把一句中文译文摘成 `lots.js` 文件头里的"原文引用" | 注释与引用说谎（台账砍不到这一类：它砍产品行为，不动注释） | 注释改成实话（anchor 不调它，第二遍只有人手动跑才付）；DESIGN 印出英文原句 `every number below is a statement about those rules`；本闸新增 D4l/D4m 与 D11c/D11d：被引用的句子必须能在被引用的文件里找到 |
 
 ## 10. 没做与为什么没做
 
 - **不做关卡编辑器**：编辑器的每一关都要重新过一遍"解数=1 + 深度测量"，那是烘焙流水线的活，
   不是 UI 的活。`#/random/<seed>?band=` 已经是可达面。
 - **不在指针按下时现场跑 DLX** 做"这一步会不会死锁"的警告：见 §2.4 的代价表。
-- **不做音效与图片**：`tools/check.mjs` 把"没有图片资产，也没有代码要图片"当断言。
+- **不装音频素材**：`js/audio.js` 里的一声是"一个振荡器 + 一条包络"现场合成的，一个音频文件都没有。
+  这不是省流量，是让"静音"可以是真的静音 —— `setMuted(true)` 挂起 AudioContext，`voice()` 在静音时
+  拒绝建任何一个节点，所以 `state()` 报得出"图是空的"，而不只是一个 boolean。
+  图片这一层只有图标、社交卡片与三张材质位图，玩法几何不向它们伸手（§1 不变量 4）。
 - **不现场生成 campaign**：30 关是烘焙进 `js/data/lots.js` 的测量表。现场生成的话，
   文档里"这一关深度是 5"这句话就没有作者了。

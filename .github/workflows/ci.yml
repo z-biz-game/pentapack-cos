@@ -30,6 +30,13 @@ jobs:
         run: for f in js/*.js js/*/*.js server.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
       - name: Layering
         run: node tools/check.mjs
+      # The docs are the fifth deliverable and the only one no other gate reads: check.mjs counts
+      # pixels and imports, the suites count behaviour, and neither notices that README still
+      # claims a number the tree no longer produces. doctest.mjs re-derives each recomputable
+      # figure from the code and pins its own row count, so it belongs in this job, not the one
+      # that skips the node layer.
+      - name: Documentation figures
+        run: node tools/doctest.mjs
       # The generator's yield is a probability: no single makeLevel() call can report it, so it
       # needs many draws — which is what the browser job deliberately does not do (SKIP_UNIT=1
       # skips the whole node layer, including this step). Without this line the promise "every

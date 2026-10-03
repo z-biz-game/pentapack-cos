@@ -52,8 +52,8 @@ export function rectSpec(w, h) {
 // That is the claim a human wants to see printed, but it doubles the cost, and it is the *weaker*
 // form of the same fact: `clean` inspects the matrix itself and proves that cover/uncover left it
 // byte-identical, which is precisely why a second sweep could not return anything else. So
-// test/anchor.test.mjs passes recount:false and asserts the digest, while this file run by hand
-// pays for both.
+// test/anchor.test.mjs asserts the digest on its own sweep and never calls this function, while
+// a human running this file by hand pays for both.
 export function proveRect(anchor, opts = {}) {
   const spec = rectSpec(anchor.w, anchor.h);
   const problem = packProblem(spec);

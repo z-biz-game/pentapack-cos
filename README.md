@@ -1,6 +1,11 @@
 # 五连块匣 · PENTAPACK
 
-把五连块填进一只匣子，一格不留。零依赖、零构建、零图片：浏览器加载的就是仓库里的文件。
+把五连块填进一只匣子，一格不留。零依赖、零构建：浏览器加载的就是仓库里的文件。
+
+十二块的形状就是数据，玩法画面全部由 canvas 从几何画出来，**一块精灵图都不需要**。仓库里确实有图片：
+十张图标、一张社交卡片、两块粒子贴图、一块毛毡纹理，共 14 张 PNG —— 它们由 `assets/gen/gen_art.py` 生成，
+`tools/check.mjs` 逐个读 IHDR、按 sha256 对回生成器清单、再自己数一遍像素的颜色数，
+所以"有图"与"图是占位的"都过不了闸。
 
 在线：<https://z-biz-game.github.io/pentapack-cos/>　本地：`npm run dev` → <http://127.0.0.1:5197/>
 
@@ -16,7 +21,7 @@
 待置区里有 `k` 块五连块。把它们全部放进匣里，一格不留、一格不压。
 
 屏幕左边是画布（匣 + 待置区），右边是读数面板和操作按钮，下面一块色对照条，再下面是匣阵抽屉。
-面板上那六行是照抄数据的（`js/main.js:175-181`），没有一个数字是估的：
+面板上那六行是照抄数据的（`js/main.js:188-193`），没有一个数字是估的：
 
 | 面板字段 | 印的是什么 | 从哪来 |
 | --- | --- | --- |
@@ -74,11 +79,11 @@
    而同一句话的下一行说合计 63）。
 3. **一次落子合法，当且仅当**这块的五个格子全部落在匣内、且不与别的块重叠。三种拒绝各有各的名字：
 
-   | 码 | 情形 | 界面说法 |
+   | 码 | 情形 | 界面说法（`BOUNCE` 的原句） |
    | --- | --- | --- |
-   | `out` | 伸出 8×8 边框 | 出框了 |
-   | `off` | 在框内、但落在匣外 | 不在匣里 |
-   | `overlap` | 压住别的块 | 压到了 |
+   | `out` | 伸出 8×8 边框 | 放下会超出边框 |
+   | `off` | 在框内、但落在匣外 | 放下会落在匣子外 |
+   | `overlap` | 压住别的块 | 放下会压住别的块 |
 
    三个名字在一处定义（`game.js:BOUNCE`），视图、提示文案、`@pointer` 断言都从那里取，
    所以不会出现第四种说法。**被拒绝的落子不计步**，这是步数经济学的一部分，不是宽容。
@@ -192,7 +197,7 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 
 ## 门禁清单（本轮 2026-09-30 实跑读数）
 
-两层。**node 层 174 行 / 0 失败**（每条命令的退出码都写进日志再读回，不信管道尾巴）：
+两层。**node 层 181 行 / 0 失败**（每条命令的退出码都写进日志再读回，不信管道尾巴）：
 
 | 套件 | rows | 钉住的东西 |
 | --- | --- | --- |
@@ -206,11 +211,14 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 | `pieces.test.mjs` | 15 | 十二块互不重复、逐块姿态数、63、D₄ 群律、轨道-稳定子、**文档里印的那串**（本轮 +1） |
 | `rng.test.mjs` | 8 | hashSeed 逐向量对外部实现、mulberry32 复现公开流、`todayKey` 拒读时钟 |
 | `storage.test.mjs` | 10 | **本轮新建**：两条单调性、用时破平局、脏字段消毒、坏档退化、两次点击清档 |
-| `tools/check.mjs` | 16 | 四条分层不变量：`js/core` 无 DOM/无时钟/无 `Math.random`、零依赖、无幽灵导出 |
+| `tools/check.mjs` | 23 | 四条分层不变量（`js/core` 无 DOM/无时钟/无 `Math.random`、零依赖）+ 资产层两头闭合（IHDR、sha256 对回生成器、像素自己数）+ 数据只走一道门 + 无幽灵导出 |
+| `tools/doctest.mjs` | 207 | **本轮新建，第六道闸**：本文档与 DESIGN 里每个能重算的数都对代码或现跑重算，并自钉自己的组数与项数（那一行行数由它文件头的钉值背书，改一处必红另一处） |
 
-`rows` 是断言条数，不是"性质个数"；相加等于 174 由上表现算。
+`rows` 是断言条数，不是"性质个数"；上面那 11 行里前 10 行相加 158、加 `check.mjs` 23 = 181，
+就是本段标题那个"node 层 181 行"。最后一行 `doctest.mjs` 不在那 181 里：它数的是自己那份
+钉值（`EXPECT_ROWS`），跟在这 11 行后面会把两个口径混成一个数。
 
-**生成率台架** `node tools/balance.mjs --check`：**15 格 / 0 breach**（本轮 GATE_RC=0，本机 0.59 s）。
+**生成率台架** `node tools/balance.mjs --check`：**15 格 / 0 breach**（本轮 GATE_RC=0，本机 0.57 s）。
 它断言的是纯整数：两条记账等式逐格成立、每一档在每个 bias 上都可达、
 平均测量深度随 k 严格右移、没有任何一格摸到 DLX 节点上限或推理帧上限、
 同一批种子重跑一遍直方图逐字相同。
@@ -222,7 +230,7 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 
 ```
 @boot 16  @play 20  @routes 15  @save 15  @pointer 20      合计 86 行 / 0 失败
-node 层同一次跑：174 行 / 0 失败（10 个套件 158 行 + tools/check.mjs 16 行）
+node 层同一次跑：181 行 / 0 失败（10 个套件 158 行 + tools/check.mjs 23 行）
 console: (none)      chrome exited      === ALL GREEN ===
 ```
 
@@ -230,13 +238,13 @@ console: (none)      chrome exited      === ALL GREEN ===
 
 `@pointer` 是这里最贵的一段：它不看内部变量，只看面板和棋盘，把一条认证解答从头点到装完；
 `@save` 验的是真 `localStorage` 落盘（含"两次点击才清空"和脏字段退化）。
-两层合计 **260 行断言 / 0 失败**。
+两层合计 **267 行断言 / 0 失败**。
 
 **哪条命令真的在 CI 里跑**（本轮查出来的缺口就在这张表里）：
 
 | 门禁 | unit job | browser job |
 | --- | --- | --- |
-| `node --check` 全树 / `tools/check.mjs` / 10 个套件 | 跑 | 跳过（`SKIP_UNIT=1` 跳过 verify 的整个 node 层） |
+| `node --check` 全树 / `tools/check.mjs` / `tools/doctest.mjs` / 10 个套件 | 跑 | 跳过（`SKIP_UNIT=1` 跳过 verify 的整个 node 层） |
 | `tools/verify.sh` 的五个浏览器场景 + console + Chrome 退出 | 不跑 | 跑 |
 | `tools/balance.mjs --check` | **本轮之前哪里都不跑** —— 只在 `verify.sh` 的 node 层里，而 browser job 把那一层整段跳过。现已是 unit job 的 `Generator yield` 一步 | 不跑 |
 | `tools/proof.mjs` | 不单独跑（四个锚点的真穷举在 `anchor.test.mjs` 里，unit job 跑的是它） | 不跑 |
@@ -271,7 +279,8 @@ console `(none)` / `LIVE_RC=0`；根 URL 连测 6 次全 200，四个真实资�
 | 63 个姿态、D₄ 群律 | `pieces.test.mjs` | 代码表 = 手抄黄金 = 两份文档里印的那串 | K16 红（文档刀） |
 | 公开锚点表 | `proof.mjs` + `anchor.test.mjs` | 与文献数字逐个等值 | 4 锚点 fail 0 |
 | 每档在每个偏置上都生成得出来 | `tools/balance.mjs --check`（本轮新建，且是 CI unit job 的一步） | 记账等式 + 可达性 + 方向性 + 可复现 | 15 格 0 breach，K18 红 |
-| 零依赖 / 分层不可越界 | `tools/check.mjs` | `package.json` 两个字段 + 全树 import/时钟/DOM 扫描 | 16 行 fail 0 |
+| 零依赖 / 分层不可越界 / 资产两头闭合 | `tools/check.mjs` | `package.json` 两个字段 + 全树 import/时钟/DOM 扫描 + 每张 PNG 的 IHDR、sha256 与像素 | 23 行 fail 0 |
+| 文档里印的每个现值等于代码的现在值 | `tools/doctest.mjs`（本轮新建） | 代码/现跑为基准，逐个等式对文档那张表；解析不到就红 | 见下 |
 
 ---
 
@@ -336,7 +345,8 @@ needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，�
 2. 重写 README 时把姿态数那串包进了反引号，`test/pieces.test.mjs` 的文档等式当场红（正则只吃空白
    分隔的 `F8 …`）。而上一份门禁日志里 pieces 还是 15/0 —— 因为 node 层在那次改写**之前**就跑完了。
    日志说的是它跑的那一刻的树，不是现在这棵树。所以这一版 README 的每一行读数都出自
-   `_tmp-penta-verify-r14.log`（含 `VERIFY_RC=0` 那一行），改完文档的树重跑了一遍才算数。
+   `_tmp-penta-verify-r16.log`（含 `VERIFY_RC=0` 与 `doctest rc: 0 / rows: 207 fail: 0` 那几行），
+   改完文档的树重跑了一遍才算数。
 
 ---
 
@@ -344,12 +354,13 @@ needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，�
 
 ```
 npm run dev      node server.cjs 5197            # 本地开玩
-npm test         check + 10 个 node 套件
+npm test         check + doctest + 10 个 node 套件
 npm run verify   bash tools/verify.sh            # 全套：node 层 + 真实 headless Chrome
-npm run proof    node tools/proof.mjs            # 公开锚点表（本轮四行真搜索合计 18.2 s，本机读数）
-npm run balance  node tools/balance.mjs          # 生成率全扫描（300 draws/格，本轮实测 2.2 s）
+npm run proof    node tools/proof.mjs            # 公开锚点表（本轮四行真搜索合计 18.0 s，本机读数）
+npm run balance  node tools/balance.mjs          # 生成率全扫描（300 draws/格，本轮实测 2.3 s）
 npm run bake     node tools/bake.mjs             # 重新出题+复证+写 lots.js（会覆盖数据文件）
-npm run check    node tools/check.mjs            # 分层自检 16 行
+npm run check    node tools/check.mjs            # 分层与资产自检 23 行
+npm run doctest  node tools/doctest.mjs          # 文档数字闸：本文档与 DESIGN 里每个现值都对代码重算
 npm run unit     逐个跑 test/*.test.mjs
 npm run electron electron .                      # 桌面壳（本仓不装 electron，没跑过真实启动）
 ```
@@ -370,7 +381,8 @@ test/       10 个 node 套件，跑在裸 node 上
 
 四条不变量被 `tools/check.mjs` 机器化：`js/core` 里没有 DOM 字样（存储层例外，且只在 `try/catch` 后提）；
 没有时钟、没有 `Math.random`（随机只来自注入的种子，`todayKey(date)` **拒绝**默认它的参数）；
-零依赖；没有图片资产，也没有代码要图片。第二条不是洁癖：唯一读时钟的地方是 `js/main.js:84`，
+零依赖；图片两头闭合（代码点名的资产都在磁盘上，磁盘上的资产都有代码点名，且每张的像素被自己数过）。
+第二条不是洁癖：决定"是哪一关"的那次读表只有一处，`js/main.js:88`，
 它把日历键注入 `resolveRoute()`。规则层自己伸手看表的话，同一链接在两次渲染里会给出两关，
 而 node 套件永远不会发现这件事。
 
@@ -390,6 +402,8 @@ test/       10 个 node 套件，跑在裸 node 上
 
 ```
 index.html            壳：顶栏 / 画布 / 读数面板 / 色对照 / 匣阵抽屉 / 通关卡片
+manifest.webmanifest  PWA 安装清单（图标、主题色、start_url）
+sw.js                 service worker：外壳离线，同源子资源 network-first（缓存永远不许赢过服务器）
 css/game.css          全部样式，一个文件
 js/core/pieces.js     十二块与 63 个 fixed 姿态、rot/mirror 下标、加载时自检
 js/core/board.js      8×8 帧算术、mask 解析/打印、落点规则与三个拒绝码、validateLevel
@@ -402,17 +416,25 @@ js/core/storage.js    存档：单调性、消毒、两次点击清档、无 win
 js/core/rng.js        hashSeed（FNV-1a 构造）+ mulberry32 + todayKey
 js/data/lots.js       构建期产物：META + 30 行带实测深度的关卡（bake.mjs 写）
 js/view.js            canvas 2D 程序绘制 + 命中几何 + 长按/双击/右键手势
+js/audio.js           合成音效：一个振荡器一条包络，静音=挂起 context 且一个节点都不建
+js/sw-register.js     只在 https 下注册 worker 的经典脚本（file:// 的 SecurityError 是异步的）
 js/main.js            路由、DOM、存档写入、键盘、window.pentapack 测试钩子
 server.cjs            零依赖静态服务器（默认 5197）
 electron/main.cjs     桌面壳（复用 server.cjs，port:0）
 tools/bake.mjs        出题 → 复证 → 写 lots.js
-tools/check.mjs       分层自检（16 行）
+tools/check.mjs       分层与资产自检（23 行）
+tools/doctest.mjs     文档数字闸：README 与 DESIGN 的每个现值对代码/现跑重算（15 组）
 tools/proof.mjs       公开锚点表
 tools/balance.mjs     生成率与深度直方图台架，--check 是整数闸
 tools/harness.mjs     微型测试框架，node 与浏览器套件输出同一个 `rows:` 形状
 tools/playtest.mjs    零依赖 CDP 驱动，@pointer 用真实 Input.dispatchMouseEvent
 tools/verify.sh       一次性验收门（端口预检、SKIP_UNIT、Chrome 退出确认）
 test/                 十个 node 套件 + 手算 fixture（期望值先于代码写死）
+assets/icons/         十张图标（16→1024 与 maskable），由生成器出
+assets/sprites/       两粒粉尘贴图
+assets/textures/      一块毛毡纹理（匣的内衬）
+assets/og-cover.png   社交卡片图
+assets/gen/           gen_art.py 与它的 manifest.json（sha256 被 check.mjs 逐个对回磁盘）
 ```
 
 ---
@@ -421,7 +443,7 @@ test/                 十个 node 套件 + 手算 fixture（期望值先于代�
 
 | 用途 | 值 | 出处 |
 | --- | --- | --- |
-| 本地静态服务 | **5197** | `server.cjs:48,59` |
+| 本地静态服务 | **5197** | `server.cjs:50,61` |
 | 浏览器门禁 devtools | **9357** | `tools/verify.sh:21-22` |
 | 端口预检 | 任一被占就拒绝开跑，并点名 owner | `tools/verify.sh:53-61` |
 | 路由 | `#/`、`#/lot/<id>`、`#/daily[/<date>]`、`#/random/<seed>[?band=…]` | `js/core/library.js:parseRoute` + `resolveRoute` |
@@ -442,10 +464,17 @@ test/                 十个 node 套件 + 手算 fixture（期望值先于代�
 - **完成判定不现场跑 DLX**。它比对烘焙解答（DESIGN §2.4），依赖"解数 = 1"这条被逐行复证的性质。
   这条依赖由 `anomaly` 哨兵看着，但**玩家真填出第二条解的概率没有被测过**——按构造它应该是 0。
 - **界面只在 8×8 及以下的烘焙匣与生成匣上被真事件验证过**；`@pointer` 走的是 campaign 前两档各一条解答，不是 30 关全打一遍。
-- **没有毫秒层面的承诺**。`proof` 与 `balance` 打印的秒数是本机读数（本轮 18.2 s / 2.2 s），不进任何断言；
+- **没有毫秒层面的承诺**。`proof` 与 `balance` 打印的秒数是本机读数（本轮 18.0 s / 2.3 s），不进任何断言；
   `make.test.mjs` 里那条生成预算是保险丝，不是"手机上多快能玩"。
-- **视图几何没有独立的数学闸**。命中盒、长按 480 ms、双击这些只在 `@pointer` 的真事件路径上被走过；
-  配色与文案（CSS、中文提示字符串）没有任何闸守着，只有 `pieces.test.mjs` 那条文档姿态数等式除外。
+- **视图几何没有独立的数学闸**。命中盒与双击/长按的**手势行为**只在 `@pointer` 的真事件路径上被走过；
+  `tools/doctest.mjs` 现在把两个常数钉成等式（文档那句 480 ms / 200 ms == `view.js` 的
+  `LONG_PRESS_MS` 与 `BOUNCE_S` 现值，且 `BOUNCE` 那三句中文在代码里只有一处副本），
+  但"坐标算得对不对"这件事仍然没有独立的解析闸。CSS 配色与其余中文文案仍然没有闸 —— 只有
+  `pieces.test.mjs` 那条文档姿态数等式与 doctest 那几条形同的等式除外。
+- **PWA 与音频没有被浏览器层断言**。`sw.js` 的缓存策略、`js/audio.js` 的"真静音"（挂起 context、
+  静音时一个节点都不建）都过了 `node --check` 与 `tools/check.mjs` 的分层/资产闸，
+  但 `@boot @play @routes @save @pointer` 这五个场景里没有一条是在断言它们 —— 音频图是否真的空，
+  要靠 `js/audio.js` 自己的 `state()`，而那目前只有人工检查。
 - **Electron 壳过 `node --check`，但仓库不装 electron，没有跑过真实启动。**
 - **移动端断点已写、`touch-action: none` 已接，但没有真机验证**；UI 只有中文。
 

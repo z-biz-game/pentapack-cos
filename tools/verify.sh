@@ -133,6 +133,21 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   tail -1 /tmp/penta-balance.log
   echo "balance rc: $BALANCE_RC"
   [ "$BALANCE_RC" = "0" ] || FAILED=1
+  # tools/doctest.mjs is the sixth gate: every recomputable number README and DESIGN print is
+  # re-derived from the code or from a live re-run, so a doc that drifts from the tree goes red.
+  # It pins its own size (groups x rows per group x total), so the two EXPECT_* values below are
+  # not decoration: dropping an assertion without re-pinning turns the grep red, and so does
+  # quietly shrinking the gate to a subset. DOCTEST_RC for the same reason as BALANCE_RC.
+  echo "--- tools/doctest.mjs"
+  DOCTEST_GROUPS_EXPECT=${DOCTEST_GROUPS_EXPECT:-15}
+  DOCTEST_ROWS_EXPECT=${DOCTEST_ROWS_EXPECT:-207}
+  node tools/doctest.mjs > /tmp/penta-doctest.log 2>&1
+  DOCTEST_RC=$?
+  tail -3 /tmp/penta-doctest.log
+  grep -q "^pin: groups=$DOCTEST_GROUPS_EXPECT rows=$DOCTEST_ROWS_EXPECT" /tmp/penta-doctest.log \
+    || { echo "doctest pin mismatch: expected groups=$DOCTEST_GROUPS_EXPECT rows=$DOCTEST_ROWS_EXPECT" >&2; DOCTEST_RC=1; }
+  echo "doctest rc: $DOCTEST_RC"
+  [ "$DOCTEST_RC" = "0" ] || FAILED=1
 else
   echo "(skipped: SKIP_UNIT=1)"
 fi

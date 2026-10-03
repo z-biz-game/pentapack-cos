@@ -12,8 +12,9 @@
     "proof": "node tools/proof.mjs",
     "balance": "node tools/balance.mjs",
     "check": "node tools/check.mjs",
+    "doctest": "node tools/doctest.mjs",
     "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
-    "test": "npm run check && npm run unit",
+    "test": "npm run check && npm run doctest && npm run unit",
     "verify": "bash tools/verify.sh"
   },
   "keywords": [
