@@ -310,6 +310,10 @@ console `(none)` / `LIVE_RC=0`；根 URL 连测 6 次全 200，四个真实资�
 （`tools/sabotage.py` 自己动了一行）——定稿树上的读数不能沿用改动之前的那一遍，所以 `-r3` 重跑整台账，
 并且跑完当场 `ls _sabotage-copy` 读了"No such file or directory"：副本没了，下一次读仓的人不会把
 `_sabotage-copy/js/core/make.js` 当成真源。`-r2` 的 38/0 与 `-r1` 的 37/0 都留在原地当历史读数，判决没变。
+CI 上那一遍也留下了读数：run `37116360948` 的 unit job 第 9 步「Ledger trips the assertion each knife names」
+completed/success，用了 2766 秒 = 46 分 06 秒（本机同一遍 12 分 40 秒，runner 就是慢）。这一句的两个数不是手记的：
+`_tmp-pentapack-ci-steps.log` 是把 Actions 的 runs/jobs 接口打印出来的，那一步的 `status/conclusion/started_at/completed_at`
+都在里面，整个 CI run 与 Pages 都是 success。
 对照的是补闸前那一轮（`-r11`，17 枪 / 与预期不符 3）：K3、K5、K6、K11、K12 五枪当时是绿的，
 那五处就是本轮找到的缺口；K17、K18 是补完之后新添的刀，一枪咬产品、一枪咬台架自己。
 同一轮里 K15 从"期望红"改判成"不该红"，理由是那条断言本来就是自比 —— 依据写在下面。
