@@ -16,7 +16,9 @@
     "sabotage": "python3 tools/sabotage.py",
     "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
     "test": "npm run check && npm run doctest && npm run unit",
-    "verify": "bash tools/verify.sh"
+    "verify": "bash tools/verify.sh",
+    "deploy-set": "node tools/deploy-set.mjs",
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs"
   },
   "keywords": [
     "game",
