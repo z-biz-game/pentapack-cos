@@ -112,13 +112,24 @@ rec('index.html references only files that exist', broken.length === 0, broken.j
 // The head used to satisfy "has an icon" with `href="data:,"`, which is a real answer to a
 // question nobody should be asking: an empty icon means the tab shows a grey hole. Now the links
 // point at generated PNGs, and the checks below are only as strong as rules 4's byte inspection.
+// The og card is the opposite failure: a *relative* og:image is a string a social crawler reads
+// out of someone else's page, and it will not add the Pages `/<repo>/` prefix for us. So it has
+// to be an absolute URL onto this site's own copy — which is also why `asked` below accepts only
+// this deployment's prefix, so an absolute URL cannot quietly become a link to another host.
+// The project slug comes from the README's own 在线 line rather than from this directory: the two
+// disagree here (the remote is `pentapack-cos`, the folder is `z-biz-game-pentapack-cos`), and a
+// slug typed twice is a claim that can rot on its own. If that line ever stops parsing, PAGES is
+// '/' and both checks below go red instead of waving the URL through.
+const liveSite = (read('README.md').match(/在线：<(https:\/\/[^>/]+\/[^>/]+)/) || [])[1] || '';
+const PAGES = liveSite + '/';
+const og = (html.match(/property="og:image" content="([^"]+)"/) || [])[1] || '';
 rec('the head declares a title, real PNG icons, an apple-touch-icon, a manifest and an og card',
   /<title>五连块匣/.test(html)
   && /rel="icon"[^>]*href="assets\/icons\/icon-32\.png"/.test(html)
   && /rel="apple-touch-icon" href="assets\/icons\/apple-touch-icon\.png"/.test(html)
   && /rel="manifest" href="manifest\.webmanifest"/.test(html)
-  && /property="og:image" content="assets\/og-cover\.png"/.test(html),
-  String(html.match(/<link[^>]+>/g)));
+  && og === PAGES + 'assets/og-cover.png' && existsSync(join(root, 'assets/og-cover.png')),
+  `og=${og} links=${String(html.match(/<link[^>]+>/g))}`);
 // Three layers can disagree about one colour: the meta the browser paints chrome with, the
 // manifest the installer paints its splash with, and the stylesheet that paints the page. This
 // reads the value out of the CSS variable rather than comparing it to a literal typed here.
@@ -283,8 +294,15 @@ rec('the committed bytes are the generator output, per assets/gen/manifest.json'
 const refHunt = ['index.html', 'css/game.css', 'sw.js', 'manifest.webmanifest', ...allFiles.filter((f) => f.startsWith(`js${sep}`))];
 const asked = new Map();
 for (const f of refHunt) {
-  for (const m of read(f).matchAll(/['"(]((?:\.\.\/)*assets\/[A-Za-z0-9._/-]+\.[a-z]{2,4})['")]/g)) {
-    const key = m[1].split('/').filter((s) => s && s !== '..').join('/');
+  for (const m of read(f).matchAll(/['"(]((?:https?:\/\/[^'"\s]+\/)?(?:\.\.\/)*assets\/[A-Za-z0-9._/-]+\.[a-z]{2,4})['")]/g)) {
+    // An absolute URL only counts as "someone asks for this file" when it is this deployment's
+    // own copy. Anything else:// that names assets/ is ignored here, so the bitmap becomes an
+    // orphan and goes red instead of shipping a picture nobody (or a foreign host) asked for.
+    const raw = m[1];
+    const local = raw.startsWith(PAGES) ? raw.slice(PAGES.length)
+      : (raw.includes('://') ? null : raw);
+    if (local === null) continue;
+    const key = local.split('/').filter((s) => s && s !== '..').join('/');
     if (!asked.has(key)) asked.set(key, f);
   }
 }
