@@ -44,10 +44,10 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 // 读同一个常量，否则"文档抄闸的钉"会变成两处各写各的。
 const EXPECT_GROUPS = 15;
 const EXPECT_ROWS_BY_GROUP = {
-  D1: 8, D2: 9, D3: 9, D4: 31, D5: 13, D6: 27, D7: 12, D8: 33, D9: 9, D10: 5, D11: 7, D12: 7, D13: 10, D14: 9,
+  D1: 8, D2: 9, D3: 9, D4: 31, D5: 13, D6: 27, D7: 12, D8: 33, D9: 9, D10: 5, D11: 7, D12: 8, D13: 10, D14: 9,
 };
 const WANT_D15 = 2 + Object.keys(EXPECT_ROWS_BY_GROUP).length + 2;
-const EXPECT_ROWS = Number(process.env.EXPECT_ROWS || 0) || 207;
+const EXPECT_ROWS = Number(process.env.EXPECT_ROWS || 0) || 208;
 
 const fail = [];
 const emitted = new Set();
@@ -551,6 +551,20 @@ const expectLines = [...VERIFY.matchAll(/(DOCTEST_GROUPS_EXPECT|DOCTEST_ROWS_EXP
 ok(expectLines.length === 2, `D12f verify.sh 把本闸的组数与项数都钉进了 expect（缺一格就是缩小范围无人守）`, expectLines.map((x) => `${x.k}=${x.v}`).join(' · ') || '一格都没有');
 ok(/SKIP_UNIT/.test(VERIFY) && /SKIP_UNIT=1/.test(CI), `D12g browser job 用 SKIP_UNIT 跳过 node 层 —— 这句话是本闸能进 unit job 的前提，两个文件都得还写着`,
   `${/SKIP_UNIT=1/.test(CI) ? 'CI 有' : 'CI 没有'}`);
+// 破坏台账（tools/sabotage.py）搬到仓里来，为的就是这一条：它此前住在仓外的 `_tmp-pentapack-sab.py`，
+// 于是"有 37 把刀"这句话只活在某一台机器的终端记录里，CI 看不见、npm 调不到、改断言的人也不会撞上它。
+// 四个位置缺一处，这句话就重新变回一段没人执行的代码：unit job 的那一步 / package.json 的 script /
+// README 里那条命令 / 台架里那把专门砍这条接线的刀。verify.sh 故意不在名单里——本地验收门不该压 12 分钟的刀。
+const SABPY = existsSync(join(ROOT, 'tools/sabotage.py')) ? read('tools/sabotage.py') : '';
+const sabWires = {
+  ci: /run: python3 tools\/sabotage\.py/.test(unitJob),
+  pkg: ((PKG.scripts || {}).sabotage || '').trim() === 'python3 tools/sabotage.py',
+  readme: /python3 tools\/sabotage\.py/.test(README),
+  knife: /'D12h/.test(SABPY),
+};
+ok(Object.values(sabWires).every(Boolean),
+  `D12h 破坏台账接进了 CI unit job、package.json 与 README，而且这条接线自己有一把刀（砍掉任何一处它就只是一段代码）`,
+  Object.entries(sabWires).map(([k, v]) => `${k}=${v ? '在' : '缺'}`).join(' · ') + (SABPY ? '' : ' · 台架文件不在树里'));
 
 // ------------------------------------------------------------------ D13 文件清单（README 目录块）
 // 这一组是"目录"这个词唯一的机器含义：文档那块列的每一行都要在磁盘上，磁盘上每一个入口

@@ -212,7 +212,7 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 | `rng.test.mjs` | 8 | hashSeed 逐向量对外部实现、mulberry32 复现公开流、`todayKey` 拒读时钟 |
 | `storage.test.mjs` | 10 | **本轮新建**：两条单调性、用时破平局、脏字段消毒、坏档退化、两次点击清档 |
 | `tools/check.mjs` | 23 | 四条分层不变量（`js/core` 无 DOM/无时钟/无 `Math.random`、零依赖）+ 资产层两头闭合（IHDR、sha256 对回生成器、像素自己数）+ 数据只走一道门 + 无幽灵导出 |
-| `tools/doctest.mjs` | 207 | **本轮新建，第六道闸**：本文档与 DESIGN 里每个能重算的数都对代码或现跑重算，并自钉自己的组数与项数（那一行行数由它文件头的钉值背书，改一处必红另一处） |
+| `tools/doctest.mjs` | 208 | **本轮新建，第六道闸**：本文档与 DESIGN 里每个能重算的数都对代码或现跑重算，并自钉自己的组数与项数（那一行行数由它文件头的钉值背书，改一处必红另一处） |
 
 `rows` 是断言条数，不是"性质个数"；上面那 11 行里前 10 行相加 158、加 `check.mjs` 23 = 181，
 就是本段标题那个"node 层 181 行"。最后一行 `doctest.mjs` 不在那 181 里：它数的是自己那份
@@ -248,6 +248,7 @@ console: (none)      chrome exited      === ALL GREEN ===
 | `tools/verify.sh` 的五个浏览器场景 + console + Chrome 退出 | 不跑 | 跑 |
 | `tools/balance.mjs --check` | **本轮之前哪里都不跑** —— 只在 `verify.sh` 的 node 层里，而 browser job 把那一层整段跳过。现已是 unit job 的 `Generator yield` 一步 | 不跑 |
 | `tools/proof.mjs` | 不单独跑（四个锚点的真穷举在 `anchor.test.mjs` 里，unit job 跑的是它） | 不跑 |
+| `python3 tools/sabotage.py`（破坏台账，38 把刀） | **本轮之前哪里都不跑** —— 台架整个住在仓外的 `_tmp-pentapack-sab.py`。现已是 unit job 的 `Ledger trips the assertion each knife names` 一步，`npm run sabotage` 也调得到 | 不跑 |
 
 `472d535` 那次的 unit job 打印了 `rows:` 16 / 20 / 15 / 12 / 23 / 27 / 11 / 17 / 15 / 8 / 10
 = **174 行 / fail 0**，但没有 `balance` —— 那一格当时只在开发机上跑。补上之后的 `cdf58d8`
@@ -281,13 +282,14 @@ console `(none)` / `LIVE_RC=0`；根 URL 连测 6 次全 200，四个真实资�
 | 每档在每个偏置上都生成得出来 | `tools/balance.mjs --check`（本轮新建，且是 CI unit job 的一步） | 记账等式 + 可达性 + 方向性 + 可复现 | 15 格 0 breach，K18 红 |
 | 零依赖 / 分层不可越界 / 资产两头闭合 | `tools/check.mjs` | `package.json` 两个字段 + 全树 import/时钟/DOM 扫描 + 每张 PNG 的 IHDR、sha256 与像素 | 23 行 fail 0 |
 | 文档里印的每个现值等于代码的现在值 | `tools/doctest.mjs`（本轮新建） | 代码/现跑为基准，逐个等式对文档那张表；解析不到就红 | 见下 |
+| 台账每把刀红在它点名的那条断言，而且有人跑它 | `tools/sabotage.py`（本轮从仓外搬进仓里；CI unit job 的一步，`npm run sabotage` 也调得到） | 副本上下刀 → 只跑它所属那条腿 → `FAIL` 行必须以此刀点名的编号开头；"有人跑它"这句话由 DK16 砍 CI 那一步来红 | 38 把刀逐条点名，见 §破坏试验台账 |
 
 ---
 
 ## 破坏试验台账
 
-台架在**仓外副本**上跑（`_tmp-pentapack-copy/`，真仓一个字节不动），一次只改一个字段，
-needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，不静默跳过）。它有**两条腿**，每把刀跑自己那条：
+台架是 `tools/sabotage.py`，在**仓内副本**上跑（`_sabotage-copy/`，在 `.gitignore` 里；真仓一个字节不动），
+一次只改一个字段，needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，不静默跳过）。它有**两条腿**，每把刀跑自己那条：
 
 - **suites 腿**：10 个 `test/*.test.mjs` + `tools/check.mjs` + `balance --check`，收集 `FAIL` 行；
 - **doctest 腿**（第六道闸上线时新添）：只跑 `node tools/doctest.mjs`，且"rc 非 0"不算过 ——
@@ -298,6 +300,16 @@ needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，�
 被掐断的闸会少发断言，那种"红"不是刀咬出来的。
 **37 枪 / 与预期不符 0 / `SAB_RC=0`**（`_tmp-pentapack-sab-run-r18.log`；两条腿各跑什么、几个套件，
 由台架在运行开头自己打印，那两句也在日志里，所以这里的套件数不是手抄的）。
+搬进仓里的第一步是先对账：同一批 37 把刀在 `tools/sabotage.py` 上整跑，读出的还是
+**37 枪 / 与预期不符 0 / `SAB_RC=0`**（`_tmp-pentapack-inrepo-r1.log`，本机 11 分 49 秒），
+所以"住进仓里"没有改变台架的判决，只是让它能被跑到。然后补上砍这条接线自己的那把（DK16），
+台账变成 **38 把刀**——每把都必须红在它点名的那条断言上，`SAB_RC` 由跑它的命令写进它自己那份日志的末尾
+（整跑 12 分 40 秒：**38 枪 / 与预期不符 0 / `SAB_RC=0`**，`_tmp-pentapack-inrepo-r3.log`。DK16 那一行读的是
+`ci=缺 · pkg=在 · readme=在 · knife=在`：只摘 CI 那一处就够让 D12h 红，另外三处还都写着"有人在跑"）。
+为什么有第三遍：38 枪那一遍（`-r2`）跑完之后台架还留着最后一把刀改过的副本，于是给它补了收尾删副本
+（`tools/sabotage.py` 自己动了一行）——定稿树上的读数不能沿用改动之前的那一遍，所以 `-r3` 重跑整台账，
+并且跑完当场 `ls _sabotage-copy` 读了"No such file or directory"：副本没了，下一次读仓的人不会把
+`_sabotage-copy/js/core/make.js` 当成真源。`-r2` 的 38/0 与 `-r1` 的 37/0 都留在原地当历史读数，判决没变。
 对照的是补闸前那一轮（`-r11`，17 枪 / 与预期不符 3）：K3、K5、K6、K11、K12 五枪当时是绿的，
 那五处就是本轮找到的缺口；K17、K18 是补完之后新添的刀，一枪咬产品、一枪咬台架自己。
 同一轮里 K15 从"期望红"改判成"不该红"，理由是那条断言本来就是自比 —— 依据写在下面。
@@ -338,6 +350,7 @@ needle 在目标文件里必须恰好出现 1 次（对不上就报 `ERROR`，�
 | DK13 | `server.cjs` 的默认端口 5197 → 5198 | 红 | 红 | D13f |
 | DK14 | 把 U7 那条读数形状的正则改坏（`\d+ +@play` → `\d+ @@play`） | 红 | 红 | D14 |
 | DK15 | 把闸自己钉的组数 `EXPECT_GROUPS` 15 → 16 | 红 | 红 | D15a |
+| DK16 | 把台账在 CI unit job 里那一步换成 `echo "ledger not wired"`（台架还在、没人跑它） | 红 | 红 | D12h |
 | N1 | 改 `css/game.css` 的 `--bg` 色号 | 红 | 红 | `tools/check.mjs:125-128` 与 `tools/check.mjs:303`：meta theme-color、manifest `theme_color` 都拿 `--bg` 当基准 |
 | N3 | 改一个没人读的色号 `--brass-dim` | 不该红 | 不红 | —（全仓 grep 过 `tools/`、`test/`、`js/`、`*.html`，没有一处闸读它） |
 | N2 | 在 README 第 14 行那句散文后面加一句 | 不该红 | 不红 | —（本轮它先以 `ERROR needle count 0` 死过一次：重写 README 把旧句换了字，刀认的是原句。这就是台架自己的漂移探测） |
@@ -479,6 +492,7 @@ tools/balance.mjs     生成率与深度直方图台架，--check 是整数闸
 tools/harness.mjs     微型测试框架，node 与浏览器套件输出同一个 `rows:` 形状
 tools/playtest.mjs    零依赖 CDP 驱动，@pointer 用真实 Input.dispatchMouseEvent
 tools/verify.sh       一次性验收门（端口预检、SKIP_UNIT、Chrome 退出确认）
+tools/sabotage.py     破坏台账台架：在 _sabotage-copy/ 副本上一把一刀，红必须点名（2026-10-03 从仓外搬进来）
 test/                 十个 node 套件 + 手算 fixture（期望值先于代码写死）
 assets/icons/         十张图标（16→1024 与 maskable），由生成器出
 assets/sprites/       两粒粉尘贴图

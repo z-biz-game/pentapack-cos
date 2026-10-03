@@ -45,6 +45,13 @@ jobs:
         run: node tools/balance.mjs --check
       - name: Suites
         run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+      # 上面那些步说"断言现在绿"；这一道说"那些断言绿得住"。台架一次只改一个字段（37 把刀 +
+      # 一把专门砍这条接线），每一把都必须红在它点名的那条断言上——红在隔壁等于那条承诺没人守。
+      # 它到 2026-10-03 之前住在仓外的 `_tmp-pentapack-sab.py`：不进版本控制、CI 看不见、npm 调不到，
+      # 于是 README 那张台账一旦停止回写，针漂了、断言改名了都没人发现。两条腿都是纯 node，
+      # 所以放得进这个没有 Chrome 的 job；本地 verify.sh 不跑它（12 分钟的刀不该压在浏览器验收门上）。
+      - name: Ledger trips the assertion each knife names
+        run: python3 tools/sabotage.py
 
   # Nothing above touches a pixel. The shell — route resolution, the tray, the drag-and-drop
   # snapping, the save file — only exists behind `window.pentapack`, and the pointer paths are
