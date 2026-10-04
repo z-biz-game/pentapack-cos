@@ -442,7 +442,7 @@ npm run electron electron .                      # 桌面壳（本仓不装 elec
 js/core/    纯规则层：pieces → board → dlx → logic → make → library → game → storage → rng
 js/data/    一张被复证过的测量表（bake 生成，别手改）
 js/view.js  只画，不判；js/main.js 只装配，不推理
-tools/      烘焙、分层自检、公开锚点、生成率台架、真事件门禁 / tools/assemble-site / tools/deploy-set / tools/deploy-set-selftest
+tools/      烘焙、分层自检、公开锚点、生成率台架、真事件门禁
 test/       10 个 node 套件，跑在裸 node 上
 ```
 
