@@ -44,7 +44,7 @@ jobs:
       - name: Generator yield
         run: node tools/balance.mjs --check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
       # 上面那些步说"断言现在绿"；这一道说"那些断言绿得住"。台架一次只改一个字段（37 把刀 +
       # 一把专门砍这条接线），每一把都必须红在它点名的那条断言上——红在隔壁等于那条承诺没人守。
       # 它到 2026-10-03 之前住在仓外的 `_tmp-pentapack-sab.py`：不进版本控制、CI 看不见、npm 调不到，
