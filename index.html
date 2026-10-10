@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1013">
+<meta name="description" content="五连块匣：把五连块填进匣子。每一关「只有解」都是精确覆盖算法证明出来的，难度是推理搜出来的数。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="五连块匣 · PENTAPACK">
+<meta property="og:description" content="每一关的「只有解」由精确覆盖（DLX）证明，推理深度是量出来的数。">
+<meta property="og:image" content="https://z-biz-game.github.io/pentapack-cos/assets/og-cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://z-biz-game.github.io/pentapack-cos/assets/og-cover.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="五连块匣">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/icon-48.png">
+<link rel="icon" type="image/png" sizes="64x64" href="assets/icons/icon-64.png">
+<link rel="icon" type="image/png" sizes="96x96" href="assets/icons/icon-96.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>五连块匣 · PENTAPACK</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 class="brand"><span class="brand-mark">▦</span>五连块匣<small>PENTAPACK</small></h1>
+  <nav class="modes" id="modes" aria-label="模式">
+    <button type="button" data-mode="campaign">匣阵</button>
+    <button type="button" data-mode="daily">每日</button>
+    <button type="button" data-mode="random">随机</button>
+  </nav>
+  <div class="huds" aria-label="系统">
+    <button type="button" id="help" title="玩法说明（?）" aria-label="玩法说明">?</button>
+    <button type="button" id="pause" title="暂停（P / 空格）" aria-label="暂停" aria-pressed="false">⏸</button>
+    <button type="button" id="mute" title="静音（M）" aria-label="静音" aria-pressed="false">🔊</button>
+    <button type="button" id="fullscreen" title="全屏（F）" aria-label="全屏">⛶</button>
+  </div>
+  <p class="totals" id="totals"></p>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <canvas id="lot" aria-label="匣子与待置块"></canvas>
+    <p class="hint-line" id="hintline"></p>
+    <div class="veil" id="veil" hidden>
+      <p class="veil-word">已暂停</p>
+      <p class="veil-note">按 P 或空格继续。暂停期间计时与动效都停下。</p>
+      <button type="button" id="resume">继续</button>
+    </div>
+    <div class="curtain" id="curtain" hidden>
+      <div class="curtain-card">
+        <p class="stars" id="stars"></p>
+        <h2 id="verdict"></h2>
+        <p class="tally" id="tally"></p>
+        <p class="proof" id="proof"></p>
+        <div class="curtain-actions">
+          <button type="button" id="again">再来一次</button>
+          <button type="button" id="next" class="primary">下一匣</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <p class="crumbs" id="crumbs"></p>
+    <dl class="readout" id="readout"></dl>
+    <div class="controls">
+      <button type="button" id="undo">撤销</button>
+      <button type="button" id="prev">上一匣</button>
+      <button type="button" id="hint">提示</button>
+      <button type="button" id="restart">倒回</button>
+      <button type="button" id="share">分享</button>
+    </div>
+    <!-- The 12 colours are the only piece identity the canvas gives you, so the mapping is
+         printed here rather than left implicit in js/view.js. Rendered by js/main.js from
+         PIECE_COLOURS, i.e. from the same table the renderer paints with. -->
+    <p class="legend" id="legend" aria-label="块色对照"></p>
+    <div class="shelf" id="shelf"></div>
+    <details class="about">
+      <summary>这一关的数字从哪来</summary>
+      <p><b>解数</b>由 <code>js/core/dlx.js</code> 的精确覆盖（Algorithm X + dancing links）数出来：把「每格恰被盖一次、每块恰用一次」写成矩阵，数它的精确覆盖个数。1 是证明，不是感觉。</p>
+      <p><b>推理深度</b>由 <code>js/core/logic.js</code> 量出：只用两条规则——某格只剩一个块能盖、某块只剩一个位置能放——推到不能再推，必须假设时才进一层假设框，实际进到的最深框数就是那个数。<i>换一套规则，这些数全变</i>。</p>
+      <p><b>操作数</b>只统计落子、取回、拖动放置的块；旋转、翻面与弹回不算一步，所以 k 块的下限就是 k。「一次到位」是零浪费，不是关卡难度。<b>难度永远只看解数与推理深度。</b></p>
+      <p>关卡由 <code>tools/bake.mjs</code> 在构建期生成并复验；每日与随机链接在浏览器里按同一套种子函数即时生成，同一链接同一关。</p>
+      <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
+    </details>
+    <!-- 教学卡贴在右栏里，绝不压住画布：@pointer 用真实鼠标事件打画布坐标，任何覆盖层都会把它打偏。 -->
+    <section class="tutorial" id="tutorial" hidden aria-label="玩法说明">
+      <h2>怎么玩</h2>
+      <ol>
+        <li>把左边的五连块<b>拖</b>进匣子：松手处即落子处，压不住会弹回去且<b>不算一步</b>。</li>
+        <li><b>双击</b>转 90°，<b>右键</b>或<b>长按</b>翻面（<b>V</b> 翻最近碰过的块）——转与翻都不算一步。</li>
+        <li>点<b>提示</b>（H）画出某一块该去的格子，免费、不动棋盘，只影响星级。</li>
+        <li>装满即通关。<b>操作数 = 块数</b>就是「一次到位」三星；<b>解数 = 1</b> 是这一关的唯一解证明。</li>
+        <li>键盘：<b>空格/P</b> 暂停 · <b>R</b> 倒回 · <b>U</b> 撤销 · <b>M</b> 静音 · <b>F</b> 全屏 · <b>?</b> 再看这一页。</li>
+      </ol>
+      <div class="tutorial-actions">
+        <button type="button" id="start" class="primary">开始装匣</button>
+        <button type="button" id="skip-tut">先看这一匣</button>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<p class="toast" id="toast" hidden></p>
+<script src="js/sw-register.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

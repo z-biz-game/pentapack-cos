@@ -1,0 +1,50 @@
+{
+  "name": "pentapack",
+  "version": "1.0.0",
+  "description": "五连块匣 Pentapack — 浏览器原生五连块装箱. 每关「只有解」由精确覆盖(DLX)证明, 难度由推理搜索量出, 关卡在构建期生成并复验.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5197",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "proof": "node tools/proof.mjs",
+    "balance": "node tools/balance.mjs",
+    "check": "node tools/check.mjs",
+    "doctest": "node tools/doctest.mjs",
+    "sabotage": "python3 tools/sabotage.py",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run doctest && npm run unit",
+    "verify": "bash tools/verify.sh",
+    "deploy-set": "node tools/deploy-set.mjs",
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "pentomino",
+    "exact-cover",
+    "dlx",
+    "algorithm-x",
+    "procedural",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.pentapack",
+    "productName": "Pentapack",
+    "mac": {
+      "category": "public.app-category.puzzle-games"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

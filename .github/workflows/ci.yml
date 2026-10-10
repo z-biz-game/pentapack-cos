@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The board model, the dancing-links solver, the logic depth meter, the generator and the
+  # shipped pool are pure ES modules: no browser, no install step. Two suites are the reason
+  # this job exists:
+  #   * anchor.test.mjs — the twelve pentominoes on 3x20 / 4x15 / 5x12 / 6x10 are counted
+  #     exhaustively and must come back 2 / 368 / 1010 / 2339 up to the rectangle's
+  #     symmetries, the published figures. A wrong cover rule shows up here as a wrong count,
+  #     roughly 18 s of real search;
+  #   * library.test.mjs — every one of the thirty baked rows in js/data/lots.js is re-proved
+  #     from its serialised form, so a hand-edited par or a stale bake fails the build.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Layering
+        run: node tools/check.mjs
+      # The docs are the fifth deliverable and the only one no other gate reads: check.mjs counts
+      # pixels and imports, the suites count behaviour, and neither notices that README still
+      # claims a number the tree no longer produces. doctest.mjs re-derives each recomputable
+      # figure from the code and pins its own row count, so it belongs in this job, not the one
+      # that skips the node layer.
+      - name: Documentation figures
+        run: node tools/doctest.mjs
+      # The generator's yield is a probability: no single makeLevel() call can report it, so it
+      # needs many draws — which is what the browser job deliberately does not do (SKIP_UNIT=1
+      # skips the whole node layer, including this step). Without this line the promise "every
+      # band is reachable at every bias, and no draw grazes a cap" would exist only on one laptop.
+      - name: Generator yield
+        run: node tools/balance.mjs --check
+      - name: Suites
+        run: npm run unit
+      # 上面那些步说"断言现在绿"；这一道说"那些断言绿得住"。台架一次只改一个字段（37 把刀 +
+      # 一把专门砍这条接线），每一把都必须红在它点名的那条断言上——红在隔壁等于那条承诺没人守。
+      # 它到 2026-10-03 之前住在仓外的 `_tmp-pentapack-sab.py`：不进版本控制、CI 看不见、npm 调不到，
+      # 于是 README 那张台账一旦停止回写，针漂了、断言改名了都没人发现。两条腿都是纯 node，
+      # 所以放得进这个没有 Chrome 的 job；本地 verify.sh 不跑它（12 分钟的刀不该压在浏览器验收门上）。
+      - name: Ledger trips the assertion each knife names
+        run: python3 tools/sabotage.py
+      # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
+      # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
+      # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
+      - name: Deploy set gate
+        run: node tools/deploy-set.mjs
+      # 阴性自证：每一类断言当场被打红一次，闸必须点名吃掉那一刀；写在注释里的假路径
+      # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
+      - name: Deploy set gate proves it can fail
+        run: node tools/deploy-set-selftest.mjs
+
+  # Nothing above touches a pixel. The shell — route resolution, the tray, the drag-and-drop
+  # snapping, the save file — only exists behind `window.pentapack`, and the pointer paths are
+  # driven with real mouse events, so this job is the only proof the game is playable.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 240
+        run: bash tools/verify.sh
