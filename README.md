@@ -212,11 +212,25 @@ DLX **数不完就说数不完**（撞熔断是抛错，不是"当成不唯一"�
 | `rng.test.mjs` | 8 | hashSeed 逐向量对外部实现、mulberry32 复现公开流、`todayKey` 拒读时钟 |
 | `storage.test.mjs` | 10 | **本轮新建**：两条单调性、用时破平局、脏字段消毒、坏档退化、两次点击清档 |
 | `tools/check.mjs` | 23 | 四条分层不变量（`js/core` 无 DOM/无时钟/无 `Math.random`、零依赖）+ 资产层两头闭合（IHDR、sha256 对回生成器、像素自己数）+ 数据只走一道门 + 无幽灵导出 |
-| `tools/doctest.mjs` | 208 | **本轮新建，第六道闸**：本文档与 DESIGN 里每个能重算的数都对代码或现跑重算，并自钉自己的组数与项数（那一行行数由它文件头的钉值背书，改一处必红另一处） |
+| `tools/doctest.mjs` | 224 | **本轮新建，第六道闸**：本文档与 DESIGN 里每个能重算的数都对代码或现跑重算，并自钉自己的组数与项数（那一行行数由它文件头的钉值背书，改一处必红另一处） |
 
 `rows` 是断言条数，不是"性质个数"；上面那 11 行里前 10 行相加 158、加 `check.mjs` 23 = 181，
 就是本段标题那个"node 层 181 行"。最后一行 `doctest.mjs` 不在那 181 里：它数的是自己那份
 钉值（`EXPECT_ROWS`），跟在这 11 行后面会把两个口径混成一个数。
+
+专管**行号引用**的那一段（`tools/doctest.mjs` 的 D10f–D10u，与家族其余几仓同一份文法）本轮实跑读数：
+**文档行号对账 16 条判据**，覆盖 3 份文档 · 36 条引用 · 8 条带指认 · 0 条续引 · 0 处无法定址 · 0 条跨仓 · 4 段台账引文。
+它判的是：每一条 `path:NN` 都要文件在盘上、行号落在真实行数内、**被指的那几行不许整段是空行**；
+贴着引用的那个名字必须作为完整标识符出现在被指的那几行里（整词，不是子串）；
+借不到路径的裸续引不静默跳过 —— 计入「无法定址」并逐处点名它在文档第几行。
+DESIGN §9 那 4 段带「旧」的引文只判文件在不在、行号越不越界，**空行与指认两条不覆盖它们**。
+这条豁免不靠散文自证：D10k 对引文点名的每个文件现跑 `git rev-list --count HEAD -- 那个文件`，
+本轮量到 js/main.js 与 server.cjs 在本仓历史里**各只有 1 版**——更早那一版压根不在这个 checkout 里，
+所以"当时那一行写着什么"读不回来；哪天那个文件有了第 2 版，这一条就红着要求收窄豁免。
+（这里故意不钉根 commit 的 SHA：CI 的 `actions/checkout` 默认是浅克隆，浅历史里根就是 HEAD，
+钉死 SHA 会成一条随环境漂的闸。）
+两把反空转的刀（空行靶、"名字不在场"的靶）每轮现量靶位，不写死行号 —— 它们证明这一段不是空跑。
+上面那批数由 `node tools/doctest.mjs` 现打印，这一段文字抄它；抄了上一轮的数就会撞在 D10n–D10u。
 
 **生成率台架** `node tools/balance.mjs --check`：**15 格 / 0 breach**（本轮 GATE_RC=0，本机 0.57 s）。
 它断言的是纯整数：两条记账等式逐格成立、每一档在每个 bias 上都可达、
@@ -427,7 +441,7 @@ npm run proof    node tools/proof.mjs            # 公开锚点表（本轮四�
 npm run balance  node tools/balance.mjs          # 生成率全扫描（300 draws/格，本轮实测 2.3 s）
 npm run bake     node tools/bake.mjs             # 重新出题+复证+写 lots.js（会覆盖数据文件）
 npm run check    node tools/check.mjs            # 分层与资产自检 23 行
-npm run doctest  node tools/doctest.mjs          # 文档数字闸：本文档与 DESIGN 里每个现值都对代码重算
+npm run doctest  node tools/doctest.mjs          # 文档数字闸：本文档与 DESIGN 里每个现值都对代码重算（行号那一段读 git ls-files 数出的全部 .md）
 npm run unit     逐个跑 test/*.test.mjs
 npm run electron electron .                      # 桌面壳（本仓不装 electron，没跑过真实启动）
 ```
@@ -490,7 +504,7 @@ server.cjs            零依赖静态服务器（默认 5197）
 electron/main.cjs     桌面壳（复用 server.cjs，port:0）
 tools/bake.mjs        出题 → 复证 → 写 lots.js
 tools/check.mjs       分层与资产自检（23 行）
-tools/doctest.mjs     文档数字闸：README 与 DESIGN 的每个现值对代码/现跑重算（15 组）
+tools/doctest.mjs     文档数字闸：README 与 DESIGN 的每个现值对代码/现跑重算（15 组；行号引用那一段读跟踪清单里的全部 .md）
 tools/proof.mjs       公开锚点表
 tools/balance.mjs     生成率与深度直方图台架，--check 是整数闸
 tools/harness.mjs     微型测试框架，node 与浏览器套件输出同一个 `rows:` 形状

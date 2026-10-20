@@ -145,7 +145,7 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   # quietly shrinking the gate to a subset. DOCTEST_RC for the same reason as BALANCE_RC.
   echo "--- tools/doctest.mjs"
   DOCTEST_GROUPS_EXPECT=${DOCTEST_GROUPS_EXPECT:-15}
-  DOCTEST_ROWS_EXPECT=${DOCTEST_ROWS_EXPECT:-208}
+  DOCTEST_ROWS_EXPECT=${DOCTEST_ROWS_EXPECT:-224}
   node tools/doctest.mjs > /tmp/penta-doctest.log 2>&1
   DOCTEST_RC=$?
   tail -3 /tmp/penta-doctest.log
