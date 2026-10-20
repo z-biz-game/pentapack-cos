@@ -534,9 +534,12 @@ ok(citedNums.length >= 20, `D10e 引用行号总数现量 ${citedNums.length}（
 // 输入集从 `git ls-files -z` 现数（不写死文件名，也不只看仓根）：deliverable.md 的引用此前不在任何
 // 引用腿的输入集里 —— 它不是"文档没写好"，是"那份纸整体不在对账范围内"。
 // 「旧 path:NN」是 DESIGN §9 更正台账专用的**引文标记**：那一格列的是上游 commit 当时留在文档里的
-// 旧抄写，它的主张是"那句话曾经存在"，不是"今天的第 N 行写着它"。本仓只有一个 commit（69fa781），
-// 历史无从读回，所以这一条腿对引文只判"文件在不在、行号越不越界"，判不了"当时那一行写的是什么"——
-// 文档里也照这句改口，不假装核过。带这个标记的引用一律不许出现在 §9 之外（用在正文里就是躲闸）。
+// 旧抄写，它的主张是"那句话曾经存在"，不是"今天的第 N 行写着它"。这一条豁免能不能成立，取决于
+// 本仓的历史里读不读得到更早的一版被引文件 —— 那句不靠嘴说，D10k 对每个被引文点名的文件现问一遍
+// `git rev-list --count HEAD -- <path>`：1 版 = 无从读回，豁免成立；哪一天那个文件有了第二版，
+// 这一格就红着提醒"豁免该收窄了"。不钉根 commit 的 SHA：CI 的 actions/checkout 默认 fetch-depth=1，
+// 那里根就是 HEAD，钉 SHA 会成一条随环境漂的闸。文档里也照这句写，不假装核过别的。
+// 带这个标记的引用一律不许出现在 §9 之外（用在正文里就是躲闸）。
 const FPATH = '[\\w./-]+?\\.[A-Za-z][A-Za-z0-9]{0,11}';
 const FCITE_RE = new RegExp('^(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)$');
 const FBARE_RE = /^:([0-9]+(?:[,-][0-9]+)*)$/;
@@ -731,6 +734,21 @@ for (const f of citeDocs) {
     if (!(n >= A9.start && n <= A9.end)) misplacedQuote.push(`DESIGN.md 的引文标记落在 §9 之外（${q.at}）`);
   }
 }
+// 引文豁免的前提当场问 git，不靠散文自证：被「旧」点名的每个文件在本仓历史里有几版。
+// 一版 = 更早的那一版根本不在仓里，"当时那一行写着什么"读不回来，豁免才有依据；
+// 两版（或查不到）= 历史里读得到更早的文件，那两条判据就再也躲不掉了。这一格必须当场红。
+// 故意不钉根 commit 的 SHA：CI 用 actions/checkout 默认 fetch-depth=1，浅 checkout 里根就是 HEAD，
+// 钉死 SHA 会成一条随环境漂的闸——问"这个 checkout 读得到几版"到哪都一样，问"根是谁"就不一定了。
+const quoteHist = [...new Set(A.quotes.map((q) => q.path))].map((p) => {
+  let n = 'ERR';
+  try {
+    n = execFileSync('git', ['-C', ROOT, 'rev-list', '--count', 'HEAD', '--', p.replace(/^\.\//, '')], { encoding: 'utf8' }).trim();
+  } catch {
+    n = 'ERR';
+  }
+  return { p, n };
+});
+const histBad = quoteHist.filter((h) => h.n !== '1');
 
 const shapeSegs = [...CITE_TEXT.matchAll(new RegExp('`(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)`', 'g'))]
   .reduce((n, m) => n + m[2].split(',').length, 0);
@@ -764,9 +782,12 @@ if (need('D10')) {
     `D10j 条数等式：解析出的段数 == 另一条独立数法（只按形状数，不借路径）的段数 + 续引借来的段数`,
     `解析 ${A.refs.length} = 形状数 ${shapeSegs} + 续引 ${A.cont} · 文档里另有 ${bareShape} 处裸续引`);
 
-  ok(A.foreign === foreignShape + foreignCont,
-    `D10k 跨仓引用按形状分出去、只数不判（本仓 checkout 读不到隔壁仓的行号，判红就是随环境漂的闸）`,
-    `形状数 ${foreignShape} 段 + 续引借来 ${foreignCont} 段 · 分出去 ${A.foreign} 段 · 其余 ${A.refs.length - A.foreign} 段由 D10g/D10h 实判 · 台账引文 ${A.quotes.length} 段只判在不在界内`);
+  ok(A.foreign === foreignShape + foreignCont && histBad.length === 0,
+    `D10k 跨仓引用按形状分出去、只数不判（本仓 checkout 读不到隔壁仓的行号，判红就是随环境漂的闸）；`
+    + `「旧」引文豁免的前提也当场问 git：被点名的文件在本仓历史里只许有一版，有第二版就是这一格该收窄的时候`,
+    `形状数 ${foreignShape} 段 + 续引借来 ${foreignCont} 段 · 分出去 ${A.foreign} 段 · 其余 ${A.refs.length - A.foreign} 段由 D10g/D10h 实判 · `
+    + `台账引文 ${A.quotes.length} 段只判在不在界内 · 引文点名的文件历史版数 ${quoteHist.map((h) => `${h.p}=${h.n}`).join(' ') || '（无引文）'}`
+    + `${histBad.length ? ' · 不止一版/查不到：' + histBad.map((h) => `${h.p}=${h.n}`).join(' | ') : ''}`);
 
   // 反空转：阳性对照不许来自文档（文档现在是绿的），也不许靠改写一条真引用来造 —— 所以喂给同一条
   // audit 的是当场合成的两句，靶子（真空行行号、名字不在场的那一行）全部现量，不写死也不指定文件名。
