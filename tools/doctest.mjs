@@ -26,7 +26,7 @@
 //   这一闸不 import js/data/lots.js：tools/check.mjs 规定那份数据只从 js/core/library.js 进门，
 //   一个工具绕过门去读数据，等于给"两个读者两套口径"开门。META 的数一律问 stats()。
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -44,10 +44,12 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 // 读同一个常量，否则"文档抄闸的钉"会变成两处各写各的。
 const EXPECT_GROUPS = 15;
 const EXPECT_ROWS_BY_GROUP = {
-  D1: 8, D2: 9, D3: 9, D4: 31, D5: 13, D6: 27, D7: 12, D8: 33, D9: 9, D10: 5, D11: 7, D12: 8, D13: 10, D14: 9,
+  D1: 8, D2: 9, D3: 9, D4: 31, D5: 13, D6: 27, D7: 12, D8: 33, D9: 9, D10: 21, D11: 7, D12: 8, D13: 10, D14: 9,
 };
 const WANT_D15 = 2 + Object.keys(EXPECT_ROWS_BY_GROUP).length + 2;
-const EXPECT_ROWS = Number(process.env.EXPECT_ROWS || 0) || 208;
+const EXPECT_ROWS = Number(process.env.EXPECT_ROWS || 0) || 224;
+// 文档行号对账这一段（D10f–D10u）自己发几条判据：README 抄的就是这个数，D10u 两头对账。
+const CITE_LEDGER_ROWS = 16;
 
 const fail = [];
 const emitted = new Set();
@@ -94,6 +96,19 @@ const runCmd = (cmd, ms) => {
   return { rc: r.status === null ? -1 : r.status, out: (r.stdout || '') + (r.stderr || '') };
 };
 const lineOf = (src, n) => (src.split('\n')[n - 1] || '').trim();
+
+// 现跑一个套件/闸、读它自己打的「rows: N fail: M」那一行。缓存起来：D8 的门禁清单那 11 行与
+// D10 的「N 行」格读的是同一次跑，各跑一遍等于把这条慢腿跑两遍（anchor 那一套本机一轮 9.4 s）。
+const liveRowsCache = new Map();
+const liveRowsOf = (key) => {
+  if (!liveRowsCache.has(key)) {
+    const p = key === 'check.mjs' ? 'tools/check.mjs' : key === 'doctest.mjs' ? 'tools/doctest.mjs' : `test/${key}`;
+    const r = runCmd(`node ${p}`, 180000);
+    const m = r.out.match(/^rows: (\d+) fail: (\d+)$/m);
+    liveRowsCache.set(key, { path: p, rc: r.rc, rows: m ? +m[1] : -1, failed: m ? +m[2] : -1 });
+  }
+  return liveRowsCache.get(key);
+};
 
 // ------------------------------------------------------------------ D1 面板那六行
 // README 说这六行是"照抄数据的，没有一个数字是估的"，还给了行号引用。两样都得当场成立。
@@ -371,10 +386,9 @@ if (need('D8')) {
   const live = {};
   for (const g of [...GATE_DOC.map((x) => x.file), 'check.mjs']) {
     const path = g === 'check.mjs' ? 'tools/check.mjs' : `test/${g}`;
-    const r = runCmd(`node ${path}`, 180000);
-    const m = r.out.match(/^rows: (\d+) fail: (\d+)$/m);
-    live[g] = { rc: r.rc, rows: m ? +m[1] : -1, failed: m ? +m[2] : -1 };
-    ok(r.rc === 0 && m && +m[2] === 0, `D8b ${path} 现场跑 rc=${r.rc} 且打了「rows: N fail: 0」`, m ? `rows ${m[1]} fail ${m[2]}` : '解析不到 rows 行');
+    const r = liveRowsOf(g);
+    live[g] = { rc: r.rc, rows: r.rows, failed: r.failed };
+    ok(r.rc === 0 && r.rows >= 0 && r.failed === 0, `D8b ${path} 现场跑 rc=${r.rc} 且打了「rows: N fail: 0」`, r.rows >= 0 ? `rows ${r.rows} fail ${r.failed}` : '解析不到 rows 行');
   }
   for (const g of GATE_DOC) {
     ok(live[g.file] && live[g.file].rows === g.rows, `D8c 文档那一行 \`${g.file}\` = ${g.rows} == 现跑 ${live[g.file] ? live[g.file].rows : '∅'}`, `现跑 ${live[g.file] ? live[g.file].rows : '跑失败'}`);
@@ -501,6 +515,325 @@ for (const a of ANCHORED) {
 ok(drift.length === 0, `D10d 钉表里 ${ANCHORED.length} 条「那一行写着什么」的引用逐条还在原位（代码插一行，这一条就替读者先撞上）`, drift.join(' / ') || '全部命中');
 const citedNums = cites.flatMap((c) => c.nums.map((n) => `${c.file}:${n}`));
 ok(citedNums.length >= 20, `D10e 引用行号总数现量 ${citedNums.length}（D10 那一组不是只比一两条样本）`, `${new Set(citedNums).size} 个不重复的行号`);
+
+// ------------------------------------------------------------------ D10f–D10u 文档行号对账（家族文法）
+// 上面 D10a-e 是本仓早期的引用检查：范围只比"行号 ≤ 文件行数"，锚点靠一张手写钉表（D10d）。
+// 这一批按 z-biz-game 家族的同一份文法把同一叠纸再过一遍（载体：tapa / gravity-weave / triplets），
+// 补的是早期文法**根本看不见**的五件事：
+//   · 裸续引（完整引用后面只写 `:120-124`）向同一句里最近的一条完整引用借路径；借不到的计入
+//     「无法定址」并逐处点名在文档第几行 —— 一条都不许静默跳过（跳过 = 那些行号从来没被读过）；
+//   · 在界内但整段是空行的引用判红 —— "在界内"不等于"指到了代码"；
+//   · 指认只从 `path:NN` 的 `NAME` 与 `NAME`（`path:NN` 两种贴法来，认**整词**不认子串，
+//     并且必须出现在被指的那几行里；条数印成「N 条带指认」；
+//   · 跨仓引用（`../别的仓/…:NN`）按形状分出去、只数不判：单仓 checkout 读不到隔壁仓，
+//     按"文件在不在"决定红不红就是一条随环境漂的闸；
+//   · 一格里写死的行数（`path`（N 行）与 `path`，N 行 两种抄法）并进同一个「指不回实处」数组，
+//     所以补第二种抄法不新增判据条数。
+// 两套文法是"加"不是"换"：D10a-e 那条宽松文法认全角冒号、不要求反引号，DESIGN §9 那种挤在散文里的
+// 引用只有它看得见；下面这批认反引号，两种形状各守住对方守不住的那一片。
+// 输入集从 `git ls-files -z` 现数（不写死文件名，也不只看仓根）：deliverable.md 的引用此前不在任何
+// 引用腿的输入集里 —— 它不是"文档没写好"，是"那份纸整体不在对账范围内"。
+// 「旧 path:NN」是 DESIGN §9 更正台账专用的**引文标记**：那一格列的是上游 commit 当时留在文档里的
+// 旧抄写，它的主张是"那句话曾经存在"，不是"今天的第 N 行写着它"。本仓只有一个 commit（69fa781），
+// 历史无从读回，所以这一条腿对引文只判"文件在不在、行号越不越界"，判不了"当时那一行写的是什么"——
+// 文档里也照这句改口，不假装核过。带这个标记的引用一律不许出现在 §9 之外（用在正文里就是躲闸）。
+const FPATH = '[\\w./-]+?\\.[A-Za-z][A-Za-z0-9]{0,11}';
+const FCITE_RE = new RegExp('^(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)$');
+const FBARE_RE = /^:([0-9]+(?:[,-][0-9]+)*)$/;
+const FQUOTE_RE = new RegExp('^旧[ \\t]+(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)$');
+const FSTOP = /[。！？；]/;
+const FID = /^[A-Za-z_$][A-Za-z0-9_$]{2,}(?:\.[A-Za-z_$][A-Za-z0-9_$]+)*$/;
+
+const fLinesCache = new Map();
+const fLinesOf = (p) => {
+  if (!fLinesCache.has(p)) {
+    let arr = null;
+    try {
+      arr = read(p).split('\n');
+      if (arr[arr.length - 1] === '') arr.pop();
+    } catch {
+      arr = null;
+    }
+    fLinesCache.set(p, arr);
+  }
+  return fLinesCache.get(p);
+};
+const fWordCache = new Map();
+const fHasWord = (text, name) => {
+  if (!fWordCache.has(name)) {
+    fWordCache.set(name, new RegExp('(^|[^A-Za-z0-9_$])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-z0-9_$])'));
+  }
+  return fWordCache.get(name).test(text);
+};
+// 只有「路径:行号」推动借路径的游标；不带行号的文件名提及（`tools/fixtures/x.json`）绝不许移动它，
+// 否则续引会借到一份对不上号的短文件上，"越界"反倒成了唯一证据。
+const fInherit = (text, spans, i) => {
+  for (let j = i - 1; j >= 0; j--) {
+    const pc = spans[j].body.match(FCITE_RE) || spans[j].body.match(FQUOTE_RE);
+    if (!pc) continue;
+    const between = text.slice(spans[j].end, spans[i].s);
+    if (between.includes('\n') && (FSTOP.test(between) || /\n[ \t]*\n/.test(between) || /\n#{1,6} /.test(between))) return null;
+    return { path: pc[1], quote: !!spans[j].body.match(FQUOTE_RE) };
+  }
+  return null;
+};
+const fTokOf = (body) => {
+  const seg = body.includes('::') ? body.slice(body.lastIndexOf('::') + 2) : body;
+  if (seg.includes('/')) return '';
+  const head = seg.split('(')[0].trim();
+  if (FID.test(head)) return head;
+  const lhs = head.split(/[=:]\s/)[0].trim();
+  return FID.test(lhs) ? lhs : '';
+};
+
+function fParseRefs(text) {
+  const spans = [];
+  const spanRe = /`([^`\n]+)`/g;
+  let m;
+  while ((m = spanRe.exec(text))) spans.push({ body: m[1], s: m.index, end: m.index + m[0].length });
+  const out = [];
+  const quotes = [];
+  const orphans = [];
+  for (let i = 0; i < spans.length; i++) {
+    const q = spans[i].body.match(FQUOTE_RE);
+    const c = q ? null : spans[i].body.match(FCITE_RE);
+    const bare = c || q ? null : FBARE_RE.exec(spans[i].body);
+    if (!c && !bare && !q) continue;
+    let anchor = '';
+    let consumed = false;
+    const next = spans[i + 1];
+    const gA = next ? text.slice(spans[i].end, next.s) : null;
+    if (gA !== null && gA.length <= 4 && !gA.includes('\n')) {
+      const gN = gA.replace(/\s+/g, '');
+      if (/^[（(]/.test(gN) || gN === '的') { consumed = true; anchor = fTokOf(next.body); }
+    }
+    if (!consumed && i > 0) {
+      const prev = spans[i - 1];
+      const gap = text.slice(prev.end, spans[i].s);
+      const gT = gap.replace(/\s+/g, '');
+      const shaped = /^[（(]/.test(gT) || /[\w一-鿿]/.test(gT);
+      if (shaped && !/\s/.test(prev.body) && gap.length <= 4 && !gap.includes('\n')) anchor = fTokOf(prev.body);
+    }
+    const at = (pos) => `第 ${text.slice(0, pos).split('\n').length} 行`;
+    if (q) {
+      for (const seg of q[2].split(',')) {
+        const p = seg.split('-').map(Number);
+        quotes.push({ path: q[1], from: p[0], to: p[p.length - 1] || p[0], at: at(spans[i].s) });
+      }
+      continue;
+    }
+    const owner = c ? { path: c[1], quote: false } : fInherit(text, spans, i);
+    if (!owner) { orphans.push(spans[i].body + '@' + at(spans[i].s)); continue; }
+    const range = c ? c[2] : bare[1];
+    for (const seg of range.split(',')) {
+      const p = seg.split('-').map(Number);
+      (owner.quote ? quotes : out).push({ path: owner.path, from: p[0], to: p[p.length - 1] || p[0], anchor, cont: !c, at: at(spans[i].s) });
+    }
+  }
+  return { refs: out, quotes, orphans };
+}
+
+// 一个「N 行」格在本仓的口径由被指的那个文件说了算：会打 `rows: N` 的套件/闸，那一格数的是**断言条数**
+// （README「rows 是断言条数」那句定的就是这套口径，由 tools/harness.mjs 决定），其余文件数的是物理行数。
+// 两种抄法（全角括号 / 逗号相接）都进同一个数组，所以补第二种不新增判据条数。
+const fCellRe = [
+  [new RegExp('`(' + FPATH + ')`（共? *([0-9]+) 行[^）]*）', 'g'), 1, 2],
+  [new RegExp('(?:^|[\\s`])(' + FPATH + ')[，,] *([0-9]+) 行', 'g'), 1, 2],
+];
+const fDocLine = (text, pos) => `第 ${text.slice(0, pos).split('\n').length} 行`;
+
+function fAuditCites(text, rowsPrinters) {
+  const { refs, quotes, orphans } = fParseRefs(text);
+  const outOfRange = [];
+  const anchorBad = [];
+  const cells = [];
+  let foreign = 0;
+  const checkOne = (r, strict) => {
+    if (r.path.startsWith('..')) { foreign++; return; }
+    const rp = resolvePath(r.path);
+    const label = `${r.path}:${r.from}${r.to !== r.from ? '-' + r.to : ''}`;
+    const lines = rp ? fLinesOf(rp) : null;
+    if (!lines) { outOfRange.push(`${label} 文件不存在`); return; }
+    if (r.from < 1 || r.to > lines.length) {
+      outOfRange.push(`${label} 越界（${rp} 共 ${lines.length} 行）`);
+      return;
+    }
+    if (!strict) return;
+    if (lines.slice(r.from - 1, r.to).join('').trim() === '') {
+      outOfRange.push(`${label} 那几行整段是空行`);
+      return;
+    }
+    if (r.anchor) {
+      const name = r.anchor.includes('.') ? r.anchor.split('.').pop() : r.anchor;
+      if (!fHasWord(lines.slice(r.from - 1, r.to).join('\n'), name)) anchorBad.push(`${label} 那几行里没有 ${name}（整词）`);
+    }
+  };
+  for (const r of refs) checkOne(r, true);
+  for (const q of quotes) checkOne(q, false);
+  for (const [re, pi, ni] of fCellRe) {
+    let k;
+    while ((k = re.exec(text))) {
+      const rp = resolvePath(k[pi]);
+      const doc = Number(k[ni]);
+      cells.push(`${k[pi]}=${doc}@${fDocLine(text, k.index)}`);
+      const key = rp ? rp.split('/').pop() : null;
+      if (rp && rowsPrinters.has(key)) {
+        const got = rowsPrinters.get(key)();
+        if (got !== doc) outOfRange.push(`${k[pi]} 现跑 ${got} 行断言，文档那一格写的是 ${doc}`);
+      } else if (!rp) outOfRange.push(`${k[pi]}（${doc} 行）文件不存在`);
+      else {
+        const n = (fLinesOf(rp) || []).length;
+        if (n !== doc) outOfRange.push(`${k[pi]} 实测 ${n} 行，文档那一格写的是 ${doc}`);
+      }
+    }
+  }
+  return { refs, quotes, outOfRange, anchorBad, cells, orphans, foreign, cont: refs.filter((r) => r.cont).length };
+}
+
+// 输入集：跟踪清单里的 .md 当场数（`-z` 不是风格：不带 -z 时 git 会把非 ASCII 文件名八进制转义并加引号，
+// 那样一份文档就静默消失在列表里，而腿照样印「全部在界内」）。拿不到 git 就退回硬名单并让 D10f 自己红。
+let citeDocs = [];
+let docsFrom = '';
+try {
+  citeDocs = execFileSync('git', ['-C', ROOT, 'ls-files', '-z'], { encoding: 'utf8' })
+    .split('\0').filter(Boolean).filter((f) => f.endsWith('.md') && !/changelog|license/i.test(f)).filter((f) => existsSync(join(ROOT, f)));
+  docsFrom = 'git ls-files';
+} catch {
+  citeDocs = ['README.md', 'DESIGN.md'].filter((f) => existsSync(join(ROOT, f)));
+  docsFrom = '写死名单（git 不可用）';
+}
+// 每份文档单独数一遍贡献的条数，这样"某一份整个被跳过"会在 D10f 红而不是让总条数悄悄变少。
+const perDoc = citeDocs.map((f) => {
+  const p = fParseRefs(read(f));
+  return { f, n: p.refs.length + p.quotes.length };
+});
+const CITE_TEXT = citeDocs.map((f) => read(f)).join('\n');
+// 会打 rows: 的那几个名字（README 门禁清单的 10 个套件 + check + 本闸自己），现跑一次就缓存。
+const rowsPrinters = new Map([
+  ...GATE_DOC.map((g) => [g.file, () => liveRowsOf(g.file).rows]),
+  ['check.mjs', () => liveRowsOf('check.mjs').rows],
+  ['doctest.mjs', () => EXPECT_ROWS],
+]);
+const A = fAuditCites(CITE_TEXT, rowsPrinters);
+const A9 = (() => {
+  const d = read('DESIGN.md');
+  const s = d.indexOf('## 9.');
+  const e = d.indexOf('## 10.');
+  return { start: s < 0 ? -1 : d.slice(0, s).split('\n').length, end: e < 0 ? d.split('\n').length : d.slice(0, e).split('\n').length };
+})();
+// 引文标记只许出现在 DESIGN §9 那一格里：正文里用它就是躲闸，别的文档根本没有 §9。
+const misplacedQuote = [];
+for (const f of citeDocs) {
+  const text = read(f);
+  for (const q of fParseRefs(text).quotes) {
+    if (f !== 'DESIGN.md') { misplacedQuote.push(`${f} 用了「旧」引文标记（${q.path}:${q.from}@${q.at}）`); continue; }
+    const n = Number((q.at.match(/第 (\d+) 行/) || [])[1] || 0);
+    if (!(n >= A9.start && n <= A9.end)) misplacedQuote.push(`DESIGN.md 的引文标记落在 §9 之外（${q.at}）`);
+  }
+}
+
+const shapeSegs = [...CITE_TEXT.matchAll(new RegExp('`(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)`', 'g'))]
+  .reduce((n, m) => n + m[2].split(',').length, 0);
+const bareShape = (CITE_TEXT.match(/`:[0-9]+(?:[,-][0-9]+)*`/g) || []).length;
+const foreignShape = [...CITE_TEXT.matchAll(new RegExp('`(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)`', 'g'))]
+  .filter((m) => m[1].startsWith('..')).reduce((n, m) => n + m[2].split(',').length, 0);
+const foreignCont = A.refs.filter((r) => r.cont && r.path.startsWith('..')).length;
+const anchoredN = A.refs.filter((r) => r.anchor).length;
+
+const citeRowsStart = rows;
+if (need('D10')) {
+  ok(A.refs.length + A.quotes.length > 0 && docsFrom === 'git ls-files' && citeDocs.length >= 3
+    && perDoc.every((x) => x.n > 0),
+    `D10f 引用腿的输入集当场从 git ls-files 派生，且每一份 .md 都真的贡献了引用（某份被跳过时这里红，而不是总条数悄悄变少）`,
+    `${docsFrom} · ${citeDocs.length} 份：${perDoc.map((x) => `${x.f}=${x.n}`).join(' · ')}`);
+
+  const allBad = A.outOfRange.concat(misplacedQuote);
+  ok(allBad.length === 0 && A.refs.length > 0,
+    `D10g 每一条 \`path:NN\` 与每一格「N 行」都指回实处：文件在盘上、行号落在真实行数内、被指的那几行不许整段是空行`,
+    `解析 ${A.refs.length} 条 · 指不回实处 ${allBad.length} 条：${allBad.slice(0, 4).join(' | ') || '（0 条）'}`);
+
+  ok(A.anchorBad.length === 0,
+    `D10h 指认腿：贴着引用的那个名字必须作为**完整标识符**出现在被指的那几行里（整词，不是子串；只从两种贴法收名字）`,
+    `带指认 ${anchoredN} 条 · 对不上 ${A.anchorBad.length} 条：${A.anchorBad.slice(0, 4).join(' | ') || '（0 条）'}`);
+
+  ok(A.orphans.length === 0,
+    `D10i 裸续引都借到了路径：句号/分号/空行/新标题截断这一次借，借不到的计入「无法定址」并逐处点名，一处都不许静默跳过`,
+    `续引 ${A.cont} 条 · 无法定址 ${A.orphans.length} 处${A.orphans.length ? '：' + A.orphans.slice(0, 4).join(' | ') + (A.orphans.length > 4 ? ` …共 ${A.orphans.length} 处` : '') : ''}`);
+
+  ok(A.refs.length === shapeSegs + A.cont,
+    `D10j 条数等式：解析出的段数 == 另一条独立数法（只按形状数，不借路径）的段数 + 续引借来的段数`,
+    `解析 ${A.refs.length} = 形状数 ${shapeSegs} + 续引 ${A.cont} · 文档里另有 ${bareShape} 处裸续引`);
+
+  ok(A.foreign === foreignShape + foreignCont,
+    `D10k 跨仓引用按形状分出去、只数不判（本仓 checkout 读不到隔壁仓的行号，判红就是随环境漂的闸）`,
+    `形状数 ${foreignShape} 段 + 续引借来 ${foreignCont} 段 · 分出去 ${A.foreign} 段 · 其余 ${A.refs.length - A.foreign} 段由 D10g/D10h 实判 · 台账引文 ${A.quotes.length} 段只判在不在界内`);
+
+  // 反空转：阳性对照不许来自文档（文档现在是绿的），也不许靠改写一条真引用来造 —— 所以喂给同一条
+  // audit 的是当场合成的两句，靶子（真空行行号、名字不在场的那一行）全部现量，不写死也不指定文件名。
+  const citedFiles = [...new Set(A.refs.filter((r) => !r.path.startsWith('..')).map((r) => resolvePath(r.path)).filter(Boolean))];
+  const blankHit = (() => {
+    for (const p of citedFiles) {
+      const i = (fLinesOf(p) || []).findIndex((l) => l.trim() === '');
+      if (i >= 0) return { p, line: i + 1 };
+    }
+    return null;
+  })();
+  if (blankHit) {
+    const ma = fAuditCites(`见 \`${blankHit.p}:${blankHit.line}\``, new Map());
+    ok(ma.refs.length === 1 && ma.outOfRange.length === 1 && /空行/.test(ma.outOfRange[0]),
+      `D10l 反空转（范围半）：把引用指到被引文件的一处真空行上（那一行当场量出来，不是写死的），范围腿必须红 —— "在界内"不等于"指到了代码"`,
+      `靶子 ${blankHit.p}:${blankHit.line} · 合成后 refs=${ma.refs.length} outOfRange=${ma.outOfRange.length}：${ma.outOfRange.join(' | ') || '（空转）'}`);
+  } else {
+    ok(false, `D10l 反空转（范围半）：本腿当场量不到一把可用的空行靶子 —— 这一格没被证明过`,
+      `可判文件 ${citedFiles.length} 个里一行空行都没有`);
+  }
+  const declRe = /^\s*(?:export\s+)?(?:var|let|const|function|class)\s+([A-Za-z0-9_$]+)/;
+  const anchorHit = (() => {
+    for (const p of citedFiles) {
+      const L = fLinesOf(p) || [];
+      for (let i = 0; i < L.length; i++) {
+        const m = declRe.exec(L[i]);
+        if (!m || !/^[A-Za-z_$][\w$]{2,}$/.test(m[1])) continue;
+        for (let j = 0; j < L.length; j++) {
+          if (j !== i && L[j].trim() !== '' && !fHasWord(L[j], m[1])) return { p, name: m[1], line: j + 1 };
+        }
+      }
+    }
+    return null;
+  })();
+  if (anchorHit) {
+    const ma = fAuditCites(`见 \`${anchorHit.name}\`（\`${anchorHit.p}:${anchorHit.line}\`）`, new Map());
+    ok(ma.refs.length === 1 && ma.anchorBad.length === 1 && ma.outOfRange.length === 0,
+      `D10m 反空转（锚点半）：把带指认的引用搬到同一文件里不含那个名字的一行（靶子现量），锚点腿必须红、范围腿不许跟着红`,
+      `靶子 ${anchorHit.name} @ ${anchorHit.p}:${anchorHit.line} · 合成后 anchorBad=${ma.anchorBad.length} outOfRange=${ma.outOfRange.length}：${ma.anchorBad.concat(ma.outOfRange).join(' | ') || '（空转）'}`);
+  } else {
+    ok(false, `D10m 反空转（锚点半）：本腿当场量不到「名字不在场」的靶子 —— 这一格没被证明过`,
+      `可判文件 ${citedFiles.length} 个里找不到一个「声明名 + 不含该名的非空行」配对`);
+  }
+
+  // 抄写台账：本腿打印的这些数一旦进了文档，就成了第二句没人核的话。逐处对账，
+  // 「一处都没写」同样要红 —— 那说明这条腿的读数已经从文档里消失，闸不替一句不存在的话作证。
+  const eqn = (label, re, mine) => {
+    const claims = [...CITE_TEXT.matchAll(re)].map((x) => Number(x[1]));
+    ok(claims.length >= 1 && claims.every((c) => c === mine), label,
+      `闸数到 ${mine} · 文档写了 ${claims.length} 处：${[...new Set(claims)].join('/') || '（一处都没写）'}`);
+  };
+  eqn(`D10n 抄写台账「N 份文档」：文档印的份数等于跟踪清单里当场数出的 .md 数`, /(\d+) 份文档/g, citeDocs.length);
+  eqn(`D10o 抄写台账「N 条引用」：文档抄的是本轮实解析数，不是上一轮那个数`, /(\d+) 条引用/g, A.refs.length);
+  eqn(`D10p 抄写台账「N 条带指认」：数的是名字绑定次数，不是引用条数（一条引用挂两个名字各计一次）`, /(\d+) 条带指认/g, anchoredN);
+  eqn(`D10q 抄写台账「N 条续引」：同句内借到出处的条数`, /(\d+) 条续引/g, A.cont);
+  eqn(`D10r 抄写台账「N 处无法定址」：借不到路径、连行号都没被读过一次的条数`, /(\d+) 处无法定址/g, A.orphans.length);
+  eqn(`D10s 抄写台账「N 条跨仓」：按形状分出去、只数不判的那几条`, /(\d+) 条跨仓/g, A.foreign);
+  eqn(`D10t 抄写台账「N 段台账引文」：§9 那种标了「旧」的历史引文，只判在不在界内`, /(\d+) 段台账引文/g, A.quotes.length);
+  // 这一段的判据数钉在 CITE_LEDGER_ROWS：文档抄的就是这个钉值，本条同时核"实发条数 == 钉值"
+  // 与"文档抄的那个数 == 实发条数"，两头各挡一种谎（改了断言没改文档 / 改了文档没改断言）。
+  const ledgerClaims = [...CITE_TEXT.matchAll(/文档行号对账 (\d+) 条判据/g)].map((x) => Number(x[1]));
+  const emittedHere = rows - citeRowsStart + 1;
+  ok(emittedHere === CITE_LEDGER_ROWS && ledgerClaims.length >= 1 && ledgerClaims.every((c) => c === CITE_LEDGER_ROWS),
+    `D10u 抄写台账「文档行号对账 N 条判据」：这一段实发的条数 == 钉的 ${CITE_LEDGER_ROWS}，且文档抄的每个数都等于它（删一条断言、或文档抄了上一轮的数，都撞在这里）`,
+    `实发 ${emittedHere} · 钉 ${CITE_LEDGER_ROWS} · 文档写了 ${ledgerClaims.length} 处：${[...new Set(ledgerClaims)].join('/') || '（一处都没写）'}`);
+  console.log(`\n文档行号对账：${citeDocs.length} 份文档 · ${A.refs.length} 条引用 · ${anchoredN} 条带指认 · ${A.cont} 条续引 · ${A.orphans.length} 处无法定址 · ${A.foreign} 条跨仓 · ${A.quotes.length} 段台账引文 · ${A.cells.length} 格行数 · ${rows - citeRowsStart} 条判据`);
+}
 
 // ------------------------------------------------------------------ D11 版本号与"重烤"这句话
 ok(RULE_SET_VERSION === 1 && s.ruleSet === 1 && s.version === 1 && LOT_VERSION === 1,

@@ -27,7 +27,7 @@ test/       10 个 node suite，跑在裸 node 上
    **再把像素自己数一遍**：少于八种颜色就是占位图，红。
 
 第 2 条不是洁癖。每日匣的链接可以不带日期（`#/daily`），这时"今天那一关"必须仍然成立，
-而**决定"是哪一关"的那次读表只有一处**：`js/main.js:88 const today = () => todayKey(new Date())`，
+而**决定"是哪一关"的那次读表只有一处**：`js/main.js:88` 的 `today`（`const today = () => todayKey(new Date())`），
 它把 key 注入 `resolveRoute(hash, today())`（`js/core/library.js:resolveRoute`）。
 外壳另外还读时钟（`js/main.js:575` 给"清空要按两次"计时、`js/main.js:787` 量一次生成的毫秒），
 但那两处都在判定之外，所以规则层自己伸手看表仍然是错的：同一链接在两次渲染里会给出两关，
@@ -222,7 +222,7 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 | 4 | `piecePoint` 对已下的块取 bbox 中心，V/U/W 是洞，抓取失败 | 产品 bug | `js/view.js:grabCentre()` 取最近被占据格中心 |
 | 5 | 裸 `#/daily` 产出 `daily-daily-`（无日期） | 产品 bug | `resolveRoute(hash, today())` 注入日期；`test/library.test.mjs` 两行钉住"注入的 key 生效"与"链接上写了日期以链接为准" |
 | 6 | `@play` 镜像行红：基线写死 | 测试错 | flip² = 恒等（独立 node 脚本量出 walk `rot 0→4, mirror 4→5, mirror 5→4`），基线改成 `turned` |
-| 7 | `@play` 超额行红：`k+1` | 测试错 | 取回也要记账 → `k+2`（`game.js:6-11`、`grade` at `game.js:248`） |
+| 7 | `@play` 超额行红：`k+1` | 测试错 | 取回也要记账 → `k+2`（`game.js:6-11`、`grade` at `game.js:245-248`） |
 | 8 | `@pointer` 七行里六行红：以为拖动能选中姿态 | 测试错 | 鼠标不能转块（§7），加 `turnTo()` 并把 `turned` 作为断言的一部分 |
 | 9 | `@pointer` 取回行的算术 `placed === plan.length - 2` | 测试错 | 断言写成相对量 `downBefore.placed - 1`；顺带清掉一个遗留变量引用 |
 | 10 | `@save` 解锁行断言"一个上锁按钮都没有" | 测试错（而且不合理） | 实际契约是 `globalIndex > s.unlock`（`main.js:206`）：`unlockTo(9)` → 30 个按钮里前 10 个可点、后 20 个灰 |
@@ -234,7 +234,7 @@ limit=2 时 5×12 只用 1016 个节点 —— 这就是烘焙为什么便宜。
 | 16 | 一次一次性探针留下 9357 上的 Chrome 与 5197 上的服务，之后的门禁报 20/20 全过 —— 它驱动的是自己没启动的那个浏览器 | 台架缺陷 → 假绿 | `tools/verify.sh` 开跑前对两个端口各做一次 `net.connect`，有人在听就 `exit 6` 并打印持有者；收尾必须看到 Chrome 真退出才写 `ALL GREEN`（§8） |
 | 17 | 本机 `=== ALL GREEN ===`，CI 的 browser job 却在第一行就废：`mktemp: too few X's in template 'pentapack'`，于是 `--user-data-dir=` 是空的，30 s 后只报 "devtools never bound on :9357" | 台架缺陷（平台差异） | macOS 的 `mktemp -t` 把参数当**前缀**，GNU 把它当**模板**且模板必须以 X 收尾。改成 `mktemp -d "${TMPDIR:-/tmp}/$TAG.XXXXXXXX"`（两边都吃，profile 仍带车道名），再加 exit 7：目录没建出来就当场退出，不让下一处失败顶着一个错误结论 |
 | 18 | 建仓 API 回 201，org 上的 About 却是 `u4e94u8fdeu5323…` | 发布脚本缺陷 | curl 的 config 里 `data = <内联值>` 会做反斜杠转义：`json.dumps` 把中文写成 `\u4e94`，curl 再把 `\` 吃掉，GitHub 收到的就是字面 `u4e94`。改成 `data = "@file"`（curl 原样读文件字节），并对本仓 `PATCH` 修回正确描述 |
-| 19 | 上游那一个 PWA commit 给 `tools/check.mjs` 加了 7 行断言（资产层从"禁止图片"改成"两头闭合 + 数像素"），README/DESIGN 一字未动：`16 行`、`node 层 174`、`两层合计 260`、`js/main.js:84`、`js/main.js:175-181`、`server.cjs:48,59`、`BOUNCE_MS = 200`、`没有图片资产`、`不做音效与图片`、`唯一读时钟的地方` —— 十处全是抄写，没有一条命令读过它们 | 文档漂移（**产品是对的，散文是错的**） | 本轮补 `tools/doctest.mjs`：15 组、每项都拿代码或现跑重算，把这十处逐个改到现值。它第一跑就报 37 红：16 处是文档说谎，6 处是本闸自己写错（同名场景被数了两遍、把译文当原文、围栏被当路径、`num()` 括号优先级、needle 太脆），6 处是尚未接线，9 处是本闸自己的钉值占位 |
+| 19 | 上游那一个 PWA commit 给 `tools/check.mjs` 加了 7 行断言（资产层从"禁止图片"改成"两头闭合 + 数像素"），README/DESIGN 一字未动：`16 行`、`node 层 174`、`两层合计 260`、`旧 js/main.js:84`、`旧 js/main.js:175-181`、`旧 server.cjs:48,59`、`BOUNCE_MS = 200`、`没有图片资产`、`不做音效与图片`、`唯一读时钟的地方` —— 十处全是抄写，没有一条命令读过它们。**带「旧」的三格是引文，不是路标**：它们记的是当时文档里写着的行号，本仓只有一个 commit（`69fa781`），"当时那一行写着什么"没有任何机器能读回来，所以 `tools/doctest.mjs` 对这三格只判文件在不在、行号越不越界，**空行与指认那两条判据不覆盖它们**（这句话自己就是腿够不着的那一类主张，写在这里而不是假装核过）；带这个标记的引用出现在 §9 以外会当场红 | 文档漂移（**产品是对的，散文是错的**） | 本轮补 `tools/doctest.mjs`：15 组、每项都拿代码或现跑重算，把这十处逐个改到现值。它第一跑就报 37 红：16 处是文档说谎，6 处是本闸自己写错（同名场景被数了两遍、把译文当原文、围栏被当路径、`num()` 括号优先级、needle 太脆），6 处是尚未接线，9 处是本闸自己的钉值占位 |
 | 20 | `tools/proof.mjs` 的注释写着 "test/anchor.test.mjs passes recount:false and asserts the digest" —— anchor 根本不调用 `proveRect`（它自己走树、自己断言 digest）；DESIGN §4 又把一句中文译文摘成 `lots.js` 文件头里的"原文引用" | 注释与引用说谎（台账砍不到这一类：它砍产品行为，不动注释） | 注释改成实话（anchor 不调它，第二遍只有人手动跑才付）；DESIGN 印出英文原句 `every number below is a statement about those rules`；本闸新增 D4l/D4m 与 D11c/D11d：被引用的句子必须能在被引用的文件里找到 |
 
 ## 10. 没做与为什么没做
