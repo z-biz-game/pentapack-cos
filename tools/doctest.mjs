@@ -534,11 +534,13 @@ ok(citedNums.length >= 20, `D10e 引用行号总数现量 ${citedNums.length}（
 // 输入集从 `git ls-files -z` 现数（不写死文件名，也不只看仓根）：deliverable.md 的引用此前不在任何
 // 引用腿的输入集里 —— 它不是"文档没写好"，是"那份纸整体不在对账范围内"。
 // 「旧 path:NN」是 DESIGN §9 更正台账专用的**引文标记**：那一格列的是上游 commit 当时留在文档里的
-// 旧抄写，它的主张是"那句话曾经存在"，不是"今天的第 N 行写着它"。这一条豁免能不能成立，取决于
-// 本仓的历史里读不读得到更早的一版被引文件 —— 那句不靠嘴说，D10k 对每个被引文点名的文件现问一遍
-// `git rev-list --count HEAD -- <path>`：1 版 = 无从读回，豁免成立；哪一天那个文件有了第二版，
-// 这一格就红着提醒"豁免该收窄了"。不钉根 commit 的 SHA：CI 的 actions/checkout 默认 fetch-depth=1，
-// 那里根就是 HEAD，钉 SHA 会成一条随环境漂的闸。文档里也照这句写，不假装核过别的。
+// 旧抄写，它的主张是"那句话曾经存在"。这一条早期是**豁免**（只判文件在不在、号越不越界），理由是
+// 更早的那一版压根不在这个 checkout 里、无从读回 —— 而它当场被 D10k 问了一遍 git，
+// 结果是 js/main.js 有 3 版、server.cjs 有 2 版：无从读回的前提已经不成立，豁免就收窄成
+// "读回最短的那一版核一遍"（rev-list 新→旧，尾项 = 第一次落下这个文件的那一版；只有一版时它
+// 退化成当前文件，与豁免时代同判）。指认仍不覆盖：引文标记里没带名字，硬凑就是造锚点。
+// 不钉根 commit 的 SHA：CI 的 actions/checkout 默认 fetch-depth=1，那里根就是 HEAD，
+// 钉 SHA 会成一条随环境漂的闸 —— 同一格在浅克隆里读回的就是 HEAD 那一版，红要在本地复跑确认。
 // 带这个标记的引用一律不许出现在 §9 之外（用在正文里就是躲闸）。
 const FPATH = '[\\w./-]+?\\.[A-Za-z][A-Za-z0-9]{0,11}';
 const FCITE_RE = new RegExp('^(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)$');
@@ -740,15 +742,34 @@ for (const f of citeDocs) {
 // 故意不钉根 commit 的 SHA：CI 用 actions/checkout 默认 fetch-depth=1，浅 checkout 里根就是 HEAD，
 // 钉死 SHA 会成一条随环境漂的闸——问"这个 checkout 读得到几版"到哪都一样，问"根是谁"就不一定了。
 const quoteHist = [...new Set(A.quotes.map((q) => q.path))].map((p) => {
-  let n = 'ERR';
+  const rel = p.replace(/^\.\//, '');
+  let shas = [];
   try {
-    n = execFileSync('git', ['-C', ROOT, 'rev-list', '--count', 'HEAD', '--', p.replace(/^\.\//, '')], { encoding: 'utf8' }).trim();
+    shas = execFileSync('git', ['-C', ROOT, 'rev-list', 'HEAD', '--', rel], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
   } catch {
-    n = 'ERR';
+    shas = [];
   }
-  return { p, n };
+  // rev-list 是新 → 旧，尾项就是第一次落下这个文件的那一版 = 「旧」引文当时面对的那份纸。
+  // 只有一版时它退化成当前文件，行为与豁免时代一致。
+  let lines = null;
+  if (shas.length === 1) lines = fLinesOf(rel);
+  else if (shas.length > 1) {
+    try {
+      lines = execFileSync('git', ['-C', ROOT, 'show', `${shas[shas.length - 1]}:${rel}`], { encoding: 'utf8', maxBuffer: 1 << 26 }).split('\n');
+    } catch {
+      lines = null;
+    }
+  }
+  if (lines && lines[lines.length - 1] === '') lines.pop();
+  const bad = [];
+  for (const q of A.quotes.filter((x) => x.path === p)) {
+    if (!lines) bad.push(`${p}:${q.from}（读不到历史版本）`);
+    else if (q.to > lines.length) bad.push(`${p}:${q.from}-${q.to} 越出最短版 ${lines.length} 行`);
+    else if (lines.slice(q.from - 1, q.to).every((l) => l.trim() === '')) bad.push(`${p}:${q.from}-${q.to} 在那一版里整段是空行`);
+  }
+  return { p, n: String(shas.length), min: lines ? lines.length : 'ERR', bad };
 });
-const histBad = quoteHist.filter((h) => h.n !== '1');
+const histBad = quoteHist.flatMap((h) => h.bad);
 
 const shapeSegs = [...CITE_TEXT.matchAll(new RegExp('`(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)`', 'g'))]
   .reduce((n, m) => n + m[2].split(',').length, 0);
@@ -784,10 +805,10 @@ if (need('D10')) {
 
   ok(A.foreign === foreignShape + foreignCont && histBad.length === 0,
     `D10k 跨仓引用按形状分出去、只数不判（本仓 checkout 读不到隔壁仓的行号，判红就是随环境漂的闸）；`
-    + `「旧」引文豁免的前提也当场问 git：被点名的文件在本仓历史里只许有一版，有第二版就是这一格该收窄的时候`,
+    + `「旧」引文不许豁免：对引文点名的每个文件现跑 git rev-list 读回**最短的那一版**，段数必须落在那一版的真实行数内、被指的那几行整段不许是空行`,
     `形状数 ${foreignShape} 段 + 续引借来 ${foreignCont} 段 · 分出去 ${A.foreign} 段 · 其余 ${A.refs.length - A.foreign} 段由 D10g/D10h 实判 · `
-    + `台账引文 ${A.quotes.length} 段只判在不在界内 · 引文点名的文件历史版数 ${quoteHist.map((h) => `${h.p}=${h.n}`).join(' ') || '（无引文）'}`
-    + `${histBad.length ? ' · 不止一版/查不到：' + histBad.map((h) => `${h.p}=${h.n}`).join(' | ') : ''}`);
+    + `台账引文 ${A.quotes.length} 段读回最短版核过（${quoteHist.map((h) => `${h.p}=${h.n} 版/${h.min} 行`).join(' ') || '无引文'}）`
+    + `${histBad.length ? ' · 对不上：' + histBad.join(' | ') : ''}`);
 
   // 反空转：阳性对照不许来自文档（文档现在是绿的），也不许靠改写一条真引用来造 —— 所以喂给同一条
   // audit 的是当场合成的两句，靶子（真空行行号、名字不在场的那一行）全部现量，不写死也不指定文件名。
