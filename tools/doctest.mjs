@@ -752,8 +752,7 @@ const quoteHist = [...new Set(A.quotes.map((q) => q.path))].map((p) => {
   // rev-list 是新 → 旧，尾项就是第一次落下这个文件的那一版 = 「旧」引文当时面对的那份纸。
   // 只有一版时它退化成当前文件，行为与豁免时代一致。
   let lines = null;
-  if (shas.length === 1) lines = fLinesOf(rel);
-  else if (shas.length > 1) {
+  if (shas.length > 1) {
     try {
       lines = execFileSync('git', ['-C', ROOT, 'show', `${shas[shas.length - 1]}:${rel}`], { encoding: 'utf8', maxBuffer: 1 << 26 }).split('\n');
     } catch {
@@ -761,15 +760,21 @@ const quoteHist = [...new Set(A.quotes.map((q) => q.path))].map((p) => {
     }
   }
   if (lines && lines[lines.length - 1] === '') lines.pop();
+  const qs = A.quotes.filter((x) => x.path === p);
+  // 只有一版时（浅克隆把 HEAD 当根，或这仓真只有一笔 commit）"更早那份纸"读不回来。
+  // 拿当前文件顶上去会造出一条随环境漂的闸：同一份文档本地绿、CI 红 —— 当前 71 行的
+  // server.cjs 第 59 行就是空行，而最短那版第 59 行是端口回落那一行。这种段计入「读不回」，不算缺陷。
+  if (shas.length <= 1) return { p, n: String(shas.length), min: '读不回', bad: [], skip: qs.length };
   const bad = [];
-  for (const q of A.quotes.filter((x) => x.path === p)) {
+  for (const q of qs) {
     if (!lines) bad.push(`${p}:${q.from}（读不到历史版本）`);
     else if (q.to > lines.length) bad.push(`${p}:${q.from}-${q.to} 越出最短版 ${lines.length} 行`);
     else if (lines.slice(q.from - 1, q.to).every((l) => l.trim() === '')) bad.push(`${p}:${q.from}-${q.to} 在那一版里整段是空行`);
   }
-  return { p, n: String(shas.length), min: lines ? lines.length : 'ERR', bad };
+  return { p, n: String(shas.length), min: lines ? lines.length : 'ERR', bad, skip: 0 };
 });
 const histBad = quoteHist.flatMap((h) => h.bad);
+const histSkip = quoteHist.reduce((n, h) => n + (h.skip || 0), 0);
 
 const shapeSegs = [...CITE_TEXT.matchAll(new RegExp('`(' + FPATH + '):([0-9]+(?:[,-][0-9]+)*)`', 'g'))]
   .reduce((n, m) => n + m[2].split(',').length, 0);
@@ -805,9 +810,9 @@ if (need('D10')) {
 
   ok(A.foreign === foreignShape + foreignCont && histBad.length === 0,
     `D10k 跨仓引用按形状分出去、只数不判（本仓 checkout 读不到隔壁仓的行号，判红就是随环境漂的闸）；`
-    + `「旧」引文不许豁免：对引文点名的每个文件现跑 git rev-list 读回**最短的那一版**，段数必须落在那一版的真实行数内、被指的那几行整段不许是空行`,
+    + `「旧」引文不许豁免：对引文点名的每个文件现跑 git rev-list 读回**最短的那一版**，段数必须落在那一版的真实行数内、被指的那几行整段不许是空行；只有一版（含浅克隆）的那些段计入「读不回」而不是判红`,
     `形状数 ${foreignShape} 段 + 续引借来 ${foreignCont} 段 · 分出去 ${A.foreign} 段 · 其余 ${A.refs.length - A.foreign} 段由 D10g/D10h 实判 · `
-    + `台账引文 ${A.quotes.length} 段读回最短版核过（${quoteHist.map((h) => `${h.p}=${h.n} 版/${h.min} 行`).join(' ') || '无引文'}）`
+    + `台账引文 ${A.quotes.length} 段：读回最短版核过 ${A.quotes.length - histSkip} 段 · 读不回 ${histSkip} 段（${quoteHist.map((h) => `${h.p}=${h.n} 版/${h.min}`).join(' ') || '无引文'}）`
     + `${histBad.length ? ' · 对不上：' + histBad.join(' | ') : ''}`);
 
   // 反空转：阳性对照不许来自文档（文档现在是绿的），也不许靠改写一条真引用来造 —— 所以喂给同一条
