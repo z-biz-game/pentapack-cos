@@ -22,7 +22,7 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - { uses: actions/checkout@v4, with: { fetch-depth: 0 } }   # D10k 要读回「旧」引文那一版；默认浅历史里读不回，这一格在远端就成了空判
       - uses: actions/setup-node@v4
         with:
           node-version: 22
